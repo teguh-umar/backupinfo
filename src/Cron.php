@@ -83,8 +83,7 @@ final class Cron extends \CommonGLPI
                 ));
             } else {
                 // Kept visible on the connection; the other connections still ran.
-                Toolbox::logInFile('backupinfo', 'Sync ' . $r['name'] . ': ' . $r['error'] . "
-");
+                Toolbox::logInFile('backupinfo', 'Sync ' . $r['name'] . ': ' . $r['error'] . "\n");
                 $task->log($r['name'] . ': ' . $r['error']);
             }
         }
