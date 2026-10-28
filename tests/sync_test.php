@@ -99,6 +99,7 @@ final class NullGateway implements GlpiPlugin\Backupinfo\Fields\FieldsGateway
     public function currentValues(string $itemtype, string $containerName, int $itemsId): ?array { return null; }
     public function findDropdownEntry(string $fieldName, string $value): int { return 0; }
     public function createDropdownEntry(string $fieldName, string $value): int { return 0; }
+    public function itemIdsWithValue(string $itemtype, string $containerName, string $column, int $value): array { return []; }
     public function itemEntity(string $itemtype, int $id): ?int { return null; }
     public function update(array $data, string $itemtype): bool { return false; }
     public function log(string $message): void {}

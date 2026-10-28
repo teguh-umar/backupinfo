@@ -24,6 +24,14 @@ interface FieldsGateway
      */
     public function currentValues(string $itemtype, string $containerName, int $itemsId): ?array;
 
+    /**
+     * Ids of the items of $itemtype whose row in the generated container class has $column = $value.
+     * Read-only.
+     *
+     * @return list<int>
+     */
+    public function itemIdsWithValue(string $itemtype, string $containerName, string $column, int $value): array;
+
     /** Id of the entry named $value in the dropdown of field $fieldName, 0 when absent. */
     public function findDropdownEntry(string $fieldName, string $value): int;
 

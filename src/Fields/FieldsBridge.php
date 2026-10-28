@@ -104,6 +104,38 @@ class FieldsBridge
     }
 
     /**
+     * Ids of the items whose "Wajib Backup" is Yes, for the coverage numbers. Read-only.
+     * [] (with one warning per run) when Fields is unavailable or the field is missing.
+     *
+     * @return list<int>
+     */
+    public function mandatoryIds(string $itemtype = self::ITEMTYPE): array
+    {
+        return $this->safely(function () use ($itemtype): array {
+            if ($this->configValue('mandatory') === '') {
+                return [];
+            }
+            [$container, $problem] = $this->resolveContainer($itemtype);
+            if ($container === null) {
+                $this->warn('container', $problem);
+                return [];
+            }
+            [$field, $problem] = $this->resolveField($container, 'mandatory');
+            if ($field === null) {
+                $this->warn('field:mandatory', $problem);
+                return [];
+            }
+            $ids = array_filter(
+                array_map('intval', $this->gateway->itemIdsWithValue($itemtype, $container['name'], self::column($field), 1)),
+                static fn (int $id): bool => $id > 0
+            );
+            $ids = array_values(array_unique($ids));
+            sort($ids);
+            return $ids;
+        }, []);
+    }
+
+    /**
      * Writes Backup Status and (when $media is not blank) Backup Media - Content.
      * Only changed values are sent; a field that cannot be resolved is skipped with a warning.
      *

@@ -28,6 +28,7 @@ final class FakeFieldsGateway implements FieldsGateway
     {
         return $this->rows["$itemtype|$containerName|$itemsId"] ?? null;
     }
+    public function itemIdsWithValue(string $itemtype, string $containerName, string $column, int $value): array { return []; }
     public function findDropdownEntry(string $fieldName, string $value): int
     {
         foreach ($this->dropdown[$fieldName] ?? [] as $id => $name) {

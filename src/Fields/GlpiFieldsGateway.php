@@ -63,6 +63,19 @@ final class GlpiFieldsGateway implements FieldsGateway
         return $row->getFromDBByCrit(['items_id' => $itemsId]) ? $row->fields : null;
     }
 
+    public function itemIdsWithValue(string $itemtype, string $containerName, string $column, int $value): array
+    {
+        $class = \PluginFieldsContainer::getClassname($itemtype, $containerName);
+        if (!class_exists($class)) {
+            throw new \RuntimeException("Fields class {$class} is not loadable");
+        }
+        $ids = [];
+        foreach ((new $class())->find([$column => $value]) as $row) {
+            $ids[] = (int) $row['items_id'];
+        }
+        return $ids;
+    }
+
     public function findDropdownEntry(string $fieldName, string $value): int
     {
         foreach ($this->dropdown($fieldName)->find(['name' => $value], ['id ASC'], 1) as $row) {
