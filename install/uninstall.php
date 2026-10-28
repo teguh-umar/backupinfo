@@ -1,6 +1,5 @@
 <?php
 
-
 function plugin_backupinfo_uninstall()
 {
     global $DB;

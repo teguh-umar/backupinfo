@@ -38,14 +38,28 @@ check('install adds missing columns idempotently (fieldExists)', str_contains($i
 foreach (['assets', 'jobs', 'storages', 'mappings'] as $old) {
     check("install drops rc table _$old", str_contains($install, "glpi_plugin_backupinfo_$old"));
 }
-check('rc drop is behind rc_tables_dropped marker', substr_count($install, 'rc_tables_dropped') >= 2);
 check('marker read via getConfigurationValues', str_contains($install, 'getConfigurationValues'));
 check('marker written via setConfigurationValues', str_contains($install, 'setConfigurationValues'));
 check('config context plugin:backupinfo', str_contains($install, "plugin:backupinfo"));
-$posIf  = strpos($install, 'rc_tables_dropped');
-$posSet = strrpos($install, 'rc_tables_dropped');
-$posDrop = strpos($install, 'DROP TABLE');
-check('marker checked before drop, set after drop', $posIf !== false && $posDrop !== false && $posIf < $posDrop && $posSet > $posDrop);
+$guarded = preg_match('/if \(empty\(\$marker\[\'rc_tables_dropped\'\]\)\) \{(.*?)\r?\n    \}\r?\n/s', $install, $m) ? $m[1] : '';
+check('rc drop guarded by empty(marker) block', $guarded !== '');
+foreach (['assets', 'jobs', 'storages', 'mappings'] as $old) {
+    check("rc table _$old appears only inside guarded block",
+        substr_count($install, "glpi_plugin_backupinfo_$old") === 1 && str_contains($guarded, "glpi_plugin_backupinfo_$old"));
+}
+check('all DROP TABLE statements are inside guarded block', substr_count($install, 'DROP TABLE') === substr_count($guarded, 'DROP TABLE')
+    && substr_count($guarded, 'DROP TABLE') >= 1);
+$lastDrop = strrpos($guarded, 'DROP TABLE');
+$setPos   = strpos($guarded, "setConfigurationValues(\$ctx, ['rc_tables_dropped'");
+check('marker set inside guarded block after the last DROP', $setPos !== false && $lastDrop !== false && $setPos > $lastDrop);
+check('marker set only once in install', substr_count($install, "'rc_tables_dropped' =>") === 1);
+
+// Legacy connections columns.
+check('api_url copied to host only where host empty', (bool) preg_match('/SET `host` = `api_url` WHERE \(`host` IS NULL OR `host` = \'\'\)/', $install));
+foreach (['api_url', 'api_secret', 'token', 'site'] as $legacy) {
+    check("legacy column $legacy dropped behind fieldExists", str_contains($install, "'$legacy'")
+        && (bool) preg_match('/foreach \(\[[^\]]*\'' . $legacy . '\'[^\]]*\] as \$legacy\) \{\s*if \(\$DB->fieldExists\([^)]*\$legacy\)\) \{\s*\$DB->doQuery\("ALTER TABLE [^"]*DROP COLUMN/', $install));
+}
 
 // Config defaults.
 foreach (['rpo_hours', 'policy_mode', 'fields_container', 'fields_status_field', 'fields_media_field',
@@ -54,7 +68,11 @@ foreach (['rpo_hours', 'policy_mode', 'fields_container', 'fields_status_field',
 }
 check('rpo_hours default 26', (bool) preg_match("/'rpo_hours'\s*=>\s*(26|'26')/", $install));
 check('policy_mode default field', (bool) preg_match("/'policy_mode'\s*=>\s*'field'/", $install));
-check('defaults do not overwrite existing values', str_contains($install, 'getConfigurationValues'));
+check('defaults only written for keys missing from current values',
+    str_contains($install, 'getConfigurationValues($ctx, array_keys($defaults))')
+    && str_contains($install, 'array_diff_key($defaults, $current)')
+    && str_contains($install, 'setConfigurationValues($ctx, $missing)')
+    && !str_contains($install, 'setConfigurationValues($ctx, $defaults)'));
 
 // Cron.
 check('cron registered', str_contains($install, "CronTask::register(Cron::class, 'Sync', HOUR_TIMESTAMP"));

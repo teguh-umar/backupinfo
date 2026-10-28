@@ -47,6 +47,17 @@ function plugin_backupinfo_install()
                 $DB->doQuery("ALTER TABLE `glpi_plugin_backupinfo_connections` ADD COLUMN `$field` $definition");
             }
         }
+
+        // Legacy rc columns: carry api_url over to host, then drop the unused ones
+        if ($DB->fieldExists('glpi_plugin_backupinfo_connections', 'api_url')) {
+            $DB->doQuery("UPDATE `glpi_plugin_backupinfo_connections`
+                SET `host` = `api_url` WHERE (`host` IS NULL OR `host` = '')");
+        }
+        foreach (['api_url', 'api_secret', 'token', 'site'] as $legacy) {
+            if ($DB->fieldExists('glpi_plugin_backupinfo_connections', $legacy)) {
+                $DB->doQuery("ALTER TABLE `glpi_plugin_backupinfo_connections` DROP COLUMN `$legacy`");
+            }
+        }
     }
 
     // Backed-up objects reported by the source
