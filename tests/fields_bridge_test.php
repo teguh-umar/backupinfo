@@ -15,7 +15,7 @@ final class FakeFieldsGateway implements FieldsGateway
     public array $fieldRows = [];          // containerId => list<field row>
     public array $rows = [];               // "itemtype|container|id" => row
     public array $dropdown = [];           // fieldName => [id => name]
-    public array $entities = ['Computer|7' => 3];
+    public array $entities = ['Computer|7' => 3, 'Computer|8' => 3];
     public array $updates = [];
     public array $creates = [];
     public array $logs = [];
@@ -41,16 +41,25 @@ final class FakeFieldsGateway implements FieldsGateway
     {
         $this->creates[] = [$fieldName, $value];
         $id = 100 + count($this->creates);
-        $this->dropdown[$fieldName][$id] = $value;
+        // name is VARCHAR(255): the DB keeps at most 255 characters
+        $this->dropdown[$fieldName][$id] = preg_match('/^.{0,255}/su', $value, $m) === 1 ? $m[0] : $value;
         return $id;
     }
     public function itemEntity(string $itemtype, int $id): ?int { return $this->entities["$itemtype|$id"] ?? null; }
     public function update(array $data, string $itemtype): bool
     {
         if ($this->throwOnUpdate) {
-            throw new RuntimeException('boom');
+            throw new RuntimeException('boom on item ' . $data['items_id']);
         }
         $this->updates[] = [$data, $itemtype];
+        // Behave like the DB: store what was written so a second run sees it.
+        $key = $itemtype . '|backupinformation|' . $data['items_id'];
+        // VARCHAR(255) columns keep at most 255 characters, as MySQL does.
+        $values = array_map(
+            static fn ($v) => is_string($v) && preg_match('/^.{0,255}/su', $v, $m) === 1 ? $m[0] : $v,
+            array_diff_key($data, array_flip(['plugin_fields_containers_id', 'items_id', 'itemtype', 'entities_id']))
+        );
+        $this->rows[$key] = $values + ($this->rows[$key] ?? []);
         return true;
     }
     public function log(string $message): void { $this->logs[] = $message; }
@@ -251,5 +260,73 @@ check('fields() lists name => label', $b->fields(5) === [
 $g = gw();
 $g->active = false;
 check('helpers empty when Fields inactive', (new FieldsBridge(cfg(), $g))->containers() === [] && (new FieldsBridge(cfg(), $g))->fields(5) === []);
+
+// --- review round 1 ---
+
+// I1: status or media pointed at the human-owned "Wajib Backup" field
+$g = gw();
+$g->rows[ROW] = ['wajibbackupfield' => '0'];
+$b = new FieldsBridge(cfg(['fields_status_field' => 'wajibbackupfield']), $g);
+check('I1: status = mandatory field is a problem', !$b->available()
+    && str_contains(implode(' ', $b->problems()), 'Wajib Backup'));
+check('I1: status = mandatory field never written', $b->write('Computer', 7, true, 'Vinchin · VM · DAILY') === true
+    && !array_key_exists('wajibbackupfield', $g->updates[0][0]));
+$g = gw();
+$b = new FieldsBridge(cfg(['fields_status_field' => 'Wajib Backup', 'fields_mandatory_field' => '']), $g);
+check('I1: a field labelled "wajib backup" is refused even with no mandatory mapping', !$b->available());
+$g = gw();
+$g->fieldRows[5][] = ['id' => 54, 'name' => 'policyfield', 'label' => 'Policy', 'type' => 'yesno', 'is_active' => true, 'multiple' => false];
+$b = new FieldsBridge(cfg(['fields_status_field' => 'policyfield', 'fields_mandatory_field' => 'Policy']), $g);
+check('I1: status = configured mandatory field (same id) is refused', !$b->available()
+    && $b->write('Computer', 7, true, '') === false && $g->updates === []);
+$g = gw();
+$g->fieldRows[5][] = ['id' => 55, 'name' => 'wajib_backup', 'label' => 'WAJIB BACKUP', 'type' => 'text', 'is_active' => true, 'multiple' => false];
+$b = new FieldsBridge(cfg(['fields_media_field' => 'wajib_backup']), $g);
+check('I1: media pointed at a "wajib backup" text field is refused', !$b->available()
+    && $b->write('Computer', 7, false, 'x') === true && !array_key_exists('wajib_backup', $g->updates[0][0]));
+
+// I2: same-named container on another itemtype with a lower id
+$g = gw();
+array_unshift($g->containerRows,
+    ['id' => 2, 'name' => 'backupinformation', 'label' => 'Backup Information', 'itemtypes' => ['NetworkEquipment'], 'is_active' => true]);
+$b = new FieldsBridge(cfg(), $g);
+check('I2: Network container with same name does not shadow Computer one (name)', $b->available());
+check('I2: write goes to the Computer container', $b->write('Computer', 7, true, 'x') === true
+    && $g->updates[0][0]['plugin_fields_containers_id'] === 5);
+check('I2: same for label match', (new FieldsBridge(cfg(['fields_container' => 'Backup Information']), $g))->available());
+$g = gw();
+$g->containerRows[] = ['id' => 9, 'name' => 'other', 'label' => 'Backup Information', 'itemtypes' => ['Computer'], 'is_active' => true];
+check('I2: ambiguous label on Computer stays unresolved', !(new FieldsBridge(cfg(['fields_container' => 'Backup Information']), $g))->available());
+$g = gw();
+$g->containerRows[0]['itemtypes'] = ['Monitor'];
+$b = new FieldsBridge(cfg(), $g);
+check('I2: fallback still explains "not attached"', str_contains(implode(' ', $b->problems()), 'not attached'));
+
+// M1: media longer than the column is capped, so a second run writes nothing
+$long = str_repeat('é', 300);
+foreach (['text', 'dropdown'] as $type) {
+    $g = gw();
+    $g->fieldRows[5][1]['type'] = $type;
+    $b = new FieldsBridge(cfg(), $g);
+    $b->write('Computer', 7, true, $long);
+    $col = $type === 'dropdown' ? 'plugin_fields_backupmediacontentfielddropdowns_id' : 'backupmediacontentfield';
+    $sent = $g->updates[0][0][$col] ?? null;
+    if ($type === 'text') {
+        check('M1: text value capped to 255 characters', is_string($sent) && preg_match_all('/./su', $sent) === 255);
+    } else {
+        check('M1: dropdown entry name capped to 255 characters', preg_match_all('/./su', $g->creates[0][1]) === 255);
+    }
+    $b2 = new FieldsBridge(cfg(), $g);
+    $b2->write('Computer', 7, true, $long);
+    check("M1: second run with long $type media makes zero writes", count($g->updates) === 1 && count($g->creates) === ($type === 'dropdown' ? 1 : 0));
+}
+
+// M2: varying exception text still logs once per run
+$g = gw();
+$g->throwOnUpdate = true;
+$b = new FieldsBridge(cfg(), $g);
+$b->write('Computer', 7, true, 'x');
+$b->write('Computer', 8, true, 'x');
+check('M2: one warning for faults with per-asset messages', count($g->logs) === 1);
 
 done();

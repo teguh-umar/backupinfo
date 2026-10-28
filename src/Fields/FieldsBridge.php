@@ -24,6 +24,8 @@ class FieldsBridge
     public const CONFIG_CONTEXT = 'plugin:backupinfo';
     public const ITEMTYPE       = 'Computer';
 
+    private const VARCHAR_MAX = 255;
+
     private const ROLES = [
         'status'    => ['key' => 'fields_status_field', 'label' => 'Backup Status', 'types' => ['yesno']],
         'media'     => ['key' => 'fields_media_field', 'label' => 'Backup Media - Content', 'types' => ['dropdown', 'text', 'textarea']],
@@ -32,7 +34,7 @@ class FieldsBridge
 
     private FieldsGateway $gateway;
 
-    /** @var array<string,true> warnings already logged by this instance (this run) */
+    /** @var array<string,true> warning keys already logged by this instance (this run) */
     private array $warned = [];
 
     /** @param array<string,mixed> $config keys fields_container, fields_status_field, fields_media_field, fields_mandatory_field */
@@ -84,12 +86,12 @@ class FieldsBridge
             }
             [$container, $problem] = $this->resolveContainer($itemtype);
             if ($container === null) {
-                $this->warn($problem);
+                $this->warn('container', $problem);
                 return null;
             }
             [$field, $problem] = $this->resolveField($container, 'mandatory');
             if ($field === null) {
-                $this->warn($problem);
+                $this->warn('field:mandatory', $problem);
                 return null;
             }
             $row   = $this->gateway->currentValues($itemtype, $container['name'], $id) ?? [];
@@ -112,14 +114,14 @@ class FieldsBridge
         return $this->safely(function () use ($itemtype, $id, $hasBackup, $media): bool {
             [$container, $problem] = $this->resolveContainer($itemtype);
             if ($container === null) {
-                $this->warn($problem);
+                $this->warn('container', $problem);
                 return false;
             }
             $targets = [];
             foreach (['status', 'media'] as $role) {
                 [$field, $problem] = $this->resolveField($container, $role);
                 if ($field === null) {
-                    $this->warn($problem);
+                    $this->warn('field:' . $role, $problem);
                 } else {
                     $targets[$role] = $field;
                 }
@@ -217,7 +219,19 @@ class FieldsBridge
         if ($wanted === '') {
             return [null, 'No Fields container is set.'];
         }
-        $container = self::byName($this->gateway->containers(), $wanted);
+        $all = $this->gateway->containers();
+        // Container names are unique only per itemtype: match among the usable ones first,
+        // so a same-named container on another itemtype cannot shadow this one.
+        $usable = array_values(array_filter(
+            $all,
+            static fn (array $c): bool => $c['is_active'] && in_array($itemtype, $c['itemtypes'], true)
+        ));
+        $container = self::byName($usable, $wanted);
+        if ($container !== null) {
+            return [$container, null];
+        }
+        // Not usable: search everything only to explain why.
+        $container = self::byName($all, $wanted);
         if ($container === null) {
             return [null, sprintf('Fields container "%s" was not found.', $wanted)];
         }
@@ -256,7 +270,27 @@ class FieldsBridge
         if ($field['type'] === 'dropdown' && !empty($field['multiple'])) {
             return [null, sprintf('Fields field "%s" (for "%s") is a multiple dropdown, which is not supported.', $wanted, $label)];
         }
+        if ($role !== 'mandatory' && $this->isPolicyField($container, $field)) {
+            return [null, sprintf('Fields field "%s" (for "%s") is the human-set "Wajib Backup" field; the plugin never writes it.', $wanted, $label)];
+        }
         return [$field, null];
+    }
+
+    /** True when $field is the human-owned "Wajib Backup" field: by name/label, or the configured mandatory field. */
+    private function isPolicyField(array $container, array $field): bool
+    {
+        foreach ([(string) $field['name'], (string) $field['label']] as $text) {
+            $norm = preg_replace('/[^a-z0-9]/', '', strtolower($text));
+            if ($norm === 'wajibbackup' || $norm === 'wajibbackupfield') {
+                return true;
+            }
+        }
+        $wanted = $this->configValue('mandatory');
+        if ($wanted === '') {
+            return false;
+        }
+        $mandatory = self::byName($this->gateway->fields((int) $container['id']), $wanted);
+        return $mandatory !== null && (int) $mandatory['id'] === (int) $field['id'];
     }
 
     /** @return array<string,int> */
@@ -276,6 +310,10 @@ class FieldsBridge
     {
         $column = self::column($field);
         $stored = $current[$column] ?? null;
+        if ($field['type'] !== 'textarea') {
+            // text columns and dropdown names are VARCHAR(255): compare what will actually be stored.
+            $media = self::cap($media, self::VARCHAR_MAX);
+        }
         if ($field['type'] !== 'dropdown') {
             return (string) ($stored ?? '') === $media ? [] : [$column => $media];
         }
@@ -286,10 +324,19 @@ class FieldsBridge
         // The value is new to the dropdown, so it differs from the stored one: add the entry.
         $entry = $this->gateway->createDropdownEntry((string) $field['name'], $media);
         if ($entry <= 0) {
-            $this->warn(sprintf('Could not add "%s" to the dropdown of Fields field "%s".', $media, $field['name']));
+            $this->warn('dropdown:' . $field['name'], sprintf('Could not add "%s" to the dropdown of Fields field "%s".', $media, $field['name']));
             return [];
         }
         return [$column => $entry];
+    }
+
+    /** First $max characters (not bytes) of $s; works without mbstring. */
+    private static function cap(string $s, int $max): string
+    {
+        if (preg_match('/^.{0,' . $max . '}/su', $s, $m) === 1) {
+            return rtrim($m[0]);
+        }
+        return substr($s, 0, $max); // invalid UTF-8: byte cut is the best we can do
     }
 
     /** Column of a field in the generated container table (Fields field.class.php naming). */
@@ -321,13 +368,14 @@ class FieldsBridge
         return trim((string) ($this->config[self::ROLES[$role]['key']] ?? ''));
     }
 
-    private function warn(?string $message): void
+    /** Logs once per run per stable $key (problem kind + role/field), whatever the message text. */
+    private function warn(string $key, ?string $message): void
     {
-        $message = 'FieldsBridge: ' . ($message ?? 'unknown problem');
-        if (isset($this->warned[$message])) {
+        if (isset($this->warned[$key])) {
             return;
         }
-        $this->warned[$message] = true;
+        $this->warned[$key] = true;
+        $message = 'FieldsBridge: ' . ($message ?? 'unknown problem');
         try {
             $this->gateway->log($message);
         } catch (\Throwable $ignored) {
@@ -346,7 +394,9 @@ class FieldsBridge
         try {
             return $fn();
         } catch (\Throwable $e) {
-            $this->warn('Fields call failed: ' . get_class($e) . ': ' . $e->getMessage());
+            // Keyed by exception class only: a message carrying per-asset values must not
+            // turn into one log line per asset.
+            $this->warn('fault:' . get_class($e), 'Fields call failed: ' . get_class($e) . ': ' . $e->getMessage());
             return $fallback;
         }
     }
