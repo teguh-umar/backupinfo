@@ -49,8 +49,7 @@ function plugin_init_backupinfo()
     // Secured fields for API credentials
     $PLUGIN_HOOKS['secured_fields']['backupinfo'] = [
         'glpi_plugin_backupinfo_connections.api_key',
-        'glpi_plugin_backupinfo_connections.api_secret',
-        'glpi_plugin_backupinfo_connections.token',
+        'glpi_plugin_backupinfo_connections.password',
     ];
 
     \Plugin::registerClass(\GlpiPlugin\Backupinfo\Profile::class, ['addtabon' => ['Profile']]);
