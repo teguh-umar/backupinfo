@@ -11,6 +11,9 @@ Owner: Claude session `backup-info-7c` (reviews everything you commit). Written 
   `python/integrations (1).py`. `python/vinchin.py` and `python/integrations.py` are empty; ignore them.
 - Patterns to copy: `../OPmanager GLPI Plugin/` (tests harness, `src/Matching/`, `src/Config.php` secrets,
   `src/Cron.php`). Shared suite files: `../../shared/pgnsuite/`.
+- Fields plugin 1.23.3 source (read only, for Task 9): `C:/Users/<user>/Downloads/glpi/marketplace/fields/`.
+  Never read `Downloads/glpi/config/` or `Downloads/glpi/files/` (hub §0 rule 7), and never search recursively from
+  `Downloads/glpi/`.
 - Suite rules: `../../_pgn-glpi-suite.md` §0 and §4. Code graph: run `graphify query "<question>"` in this folder
   before grepping.
 

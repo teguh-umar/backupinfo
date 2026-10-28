@@ -202,11 +202,22 @@ backupinfo always calls mode `hybrid_name` (name, then IP).
 - `FieldsBridge::write(string $itemtype, int $id, bool $hasBackup, string $media): bool` — writes only changed values.
 - Setup helpers: `containers(): array<int,string>` for Computer, `fields(int $containerId): array<string,string>`.
 
-- [ ] Before coding, read the Fields plugin version on the VM-equivalent source (not in this repo; ask the reviewer
-  if not available) and use its container API (`PluginFieldsContainer::updateFieldsValues()` or the generated
-  `PluginFields<Itemtype><container>` class `add`/`update`) so history is recorded. "Backup Media - Content" is a
-  Fields **dropdown**: resolve or create the dropdown entry through its generated dropdown class. Record which API you
-  used in the handoff.
+- [ ] Fields source (read only): `C:/Users/<user>/Downloads/glpi/marketplace/fields/` (version **1.23.3**; it is
+  under `marketplace/`, not `plugins/`). Write with:
+```php
+(new \PluginFieldsContainer())->updateFieldsValues([
+    'plugin_fields_containers_id' => $containerId,
+    'items_id' => $id, 'itemtype' => $itemtype, 'entities_id' => $entityId,
+    $statusField => $hasBackup ? 1 : 0,                       // yesno field: column = field name
+    'plugin_fields_' . $mediaField . 'dropdowns_id' => $dropdownId, // dropdown field
+], $itemtype, true);   // true = massiveaction: validate only the keys sent (container.class.php:1703)
+```
+  It adds or updates the row in the generated `PluginFields<Itemtype><container>` class and builds history
+  (`container.class.php:1366-1453`). Read the current values first with the same generated class
+  (`PluginFieldsContainer::getClassname($itemtype, $containerName)`, `getFromDBByCrit(['items_id'=>$id])`) and skip
+  the call when nothing changed. Dropdown entries: class `PluginFieldsDropdown::getClassname($systemName)` =
+  `PluginFields<fieldname>Dropdown`; find by `name`, `add(['name'=>…, 'entities_id'=>0, 'is_recursive'=>1])` if absent.
+  Check that "Backup Media - Content" is really a dropdown (`glpi_plugin_fields_fields.type`) and handle `text` too.
 - [ ] Tests: `available()` false when the plugin is inactive or config empty (Review Focus 5); a write with unchanged
   values does nothing (fake reader). → FAIL → implement → PASS. Commit.
 
