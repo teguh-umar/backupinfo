@@ -38,7 +38,7 @@ final class Signer
     /** JSON.stringify equivalent: compact, unicode and slashes as-is, empty array stays []. */
     public static function json(array $v): string
     {
-        return json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        return json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_LINE_TERMINATORS | JSON_THROW_ON_ERROR);
     }
 
     /** RSA PKCS#1 v1.5 with the console public key, base64 output. */

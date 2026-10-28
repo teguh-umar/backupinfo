@@ -1,11 +1,14 @@
 <?php
 
 // Runs every tests/*_test.php in its own PHP process (stubs differ per suite).
-// Children get no php.ini: forward the extension dir and the extensions the parent loaded.
-$ini = '-d extension_dir=' . escapeshellarg((string) ini_get('extension_dir'));
-foreach (['openssl', 'curl'] as $ext) {
-    if (extension_loaded($ext)) {
-        $ini .= ' -d extension=' . $ext;
+// Only when the parent has no php.ini: forward the extension dir and loaded extensions.
+$ini = '';
+if (php_ini_loaded_file() === false) {
+    $ini = '-d extension_dir=' . escapeshellarg((string) ini_get('extension_dir'));
+    foreach (['openssl', 'curl'] as $ext) {
+        if (extension_loaded($ext)) {
+            $ini .= ' -d extension=' . $ext;
+        }
     }
 }
 $failed = 0;

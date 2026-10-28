@@ -18,4 +18,6 @@ check('sign keeps params and adds timestamp', $s['a'] === 1 && $s['timestamp'] =
 check('json empty array is []', Signer::json(['x' => []]) === '{"x":[]}');
 check('json unescaped unicode and slashes', Signer::json(['u' => "é/"]) === '{"u":"é/"}');
 
+check('json keeps U+2028 raw', str_contains(Signer::json(['a' => "\u{2028}"]), "\u{2028}"));
+
 done();
