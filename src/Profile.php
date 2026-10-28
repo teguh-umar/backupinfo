@@ -42,7 +42,9 @@ class Profile extends \Profile
         $rights = [
             [
                 'itemtype' => '',
-                'rights'   => [READ => __('Read'), UPDATE => __('Update')],
+                // CREATE/PURGE: add and delete connections. Offered here so saving the
+                // matrix never strips them from a profile (Super-Admin is seeded with all).
+                'rights'   => [READ => __('Read'), UPDATE => __('Update'), CREATE => __('Create'), PURGE => __('Delete permanently')],
                 'label'    => __('Configure Backup Info', 'backupinfo'),
                 'field'    => RightDefinition::CONFIG,
             ],

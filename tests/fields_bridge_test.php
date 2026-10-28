@@ -330,4 +330,16 @@ $b->write('Computer', 7, true, 'x');
 $b->write('Computer', 8, true, 'x');
 check('M2: one warning for faults with per-asset messages', count($g->logs) === 1);
 
+// --- Task 12 fix I2: container by system name ---
+$b = new FieldsBridge(cfg(), gw());
+check('containerOptions() gives id, name, label of Computer containers', $b->containerOptions() === [['id' => 5, 'name' => 'backupinformation', 'label' => 'Backup Information']]);
+$g = gw();
+$g->containerRows[0]['label'] = 'Renamed by someone';
+check('renamed container label still resolves by stored name', (new FieldsBridge(cfg(), $g))->available());
+$g = gw();
+check('legacy stored label still resolves', (new FieldsBridge(cfg(['fields_container' => 'Backup Information']), $g))->available());
+$g = gw();
+$g->active = false;
+check('containerOptions() empty when Fields inactive', (new FieldsBridge(cfg(), $g))->containerOptions() === []);
+
 done();

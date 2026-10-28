@@ -75,6 +75,40 @@ class SuiteConfig
         return ['values' => $values, 'errors' => $errors];
     }
 
+    /**
+     * Pure: options for the container select (system name => "label (name)"), the value to
+     * preselect, and the container id for the field selects. Stores names (binding ruling);
+     * a value saved as a label by the first Task 12 build still resolves (unique label) and
+     * is preselected by its name, so the next Save migrates it.
+     *
+     * @param list<array{id:int,name:string,label:string}> $containers
+     * @return array{0: array<string,string>, 1: string, 2: int}
+     */
+    public static function containerChoices(array $containers, string $saved): array
+    {
+        $options  = ['' => '-----'];
+        $selected = $saved;
+        $id       = 0;
+        foreach ($containers as $c) {
+            $options[$c['name']] = $c['label'] . ' (' . $c['name'] . ')';
+            if ($saved !== '' && $c['name'] === $saved) {
+                $id = $c['id'];
+            }
+        }
+        if ($saved !== '' && $id === 0) {
+            $fold = static fn (string $v): string => function_exists('mb_strtolower') ? mb_strtolower($v) : strtolower($v);
+            $hits = array_values(array_filter($containers, static fn (array $c): bool => $fold(trim($c['label'])) === $fold($saved)));
+            if (count($hits) === 1) {
+                $id       = $hits[0]['id'];
+                $selected = $hits[0]['name'];
+            }
+        }
+        if ($selected !== '' && !isset($options[$selected])) {
+            $options[$selected] = sprintf(__('%s (not found)', 'backupinfo'), $selected);
+        }
+        return [$options, $selected, $id];
+    }
+
     public static function render(): void
     {
         $canedit = Session::haveRight(RightDefinition::CONFIG, UPDATE);
@@ -88,7 +122,7 @@ class SuiteConfig
         $problems = $bridge->problems();
         if (!$bridge->available() || $problems !== []) {
             echo '<div class="alert alert-warning"><strong>' . __s('Fields is not (fully) updated by the sync:', 'backupinfo') . '</strong><ul class="mb-0">';
-            foreach ($problems as $problem) {
+            foreach ($problems ?: [__('Fields is not available (see the backupinfo log).', 'backupinfo')] as $problem) {
                 echo '<li>' . htmlescape($problem) . '</li>';
             }
             echo '</ul></div>';
@@ -124,20 +158,10 @@ class SuiteConfig
         echo '</div></div>';
 
         echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __s('Fields mapping (Computer)', 'backupinfo') . '</h3></div><div class="card-body">';
-        $containers = $bridge->containers();
-        $savedContainer = trim((string) ($cfg['fields_container'] ?? ''));
-        $options = ['' => Dropdown::EMPTY_VALUE];
-        $containerId = 0;
-        foreach ($containers as $id => $label) {
-            $options[$label] = $label;
-            if ($savedContainer !== '' && mb_strtolower($label) === mb_strtolower($savedContainer)) {
-                $containerId = (int) $id;
-                $savedContainer = $label;
-            }
-        }
-        if ($savedContainer !== '' && !isset($options[$savedContainer])) {
-            $options[$savedContainer] = sprintf(__('%s (not found)', 'backupinfo'), $savedContainer);
-        }
+        [$options, $savedContainer, $containerId] = self::containerChoices(
+            $bridge->containerOptions(),
+            trim((string) ($cfg['fields_container'] ?? ''))
+        );
         echo '<div class="mb-3"><label class="form-label">' . __s('Fields container', 'backupinfo') . '</label>';
         Dropdown::showFromArray('fields_container', $options, ['value' => $savedContainer, 'width' => '100%', 'readonly' => !$canedit]);
         echo '<div class="form-hint">' . __s('After changing the container, save once to list its fields.', 'backupinfo') . '</div></div>';

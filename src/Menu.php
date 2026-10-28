@@ -29,7 +29,12 @@ class Menu
                 'title' => __('Connections', 'backupinfo'),
                 'page'  => '/plugins/backupinfo/front/connection.php',
                 'icon'  => 'ti ti-plug-connected',
+                'lists_itemtype' => Connection::class,
             ];
+            if (Session::haveRight(RightDefinition::CONFIG, CREATE)) {
+                // "+ Add" in the page header (id 0 form).
+                $options['connection']['links'] = ['add' => '/plugins/backupinfo/front/connection.form.php'];
+            }
         }
         if ($options === []) {
             return null;

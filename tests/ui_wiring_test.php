@@ -31,7 +31,7 @@ check('section only on Computer', str_contains($tab, '$item instanceof Computer'
 check('section respects the Computer entity', str_contains($tab, 'Session::haveAccessToEntity('));
 check('section shows mandatory and last sync', str_contains($tab, 'isMandatory(') && str_contains($tab, 'last_sync'));
 check('section key in suite pattern', AssetTab::KEY === 'backup' && str_contains($tab, "'key'    => self::KEY"));
-check('section order in the unclaimed 80-89 band', AssetTab::ORDER >= 80 && AssetTab::ORDER <= 89);
+check('section order 100 (orchestrator ruling; 80 is mist)', AssetTab::ORDER === 100);
 
 check('age: minutes', AssetTab::age(300) === '5 min');
 check('age: hours', AssetTab::age(3 * 3600 + 60) === '3 h');
@@ -70,7 +70,7 @@ $sc = $read('src/SuiteConfig.php');
 check('section posts to front/config.php', str_contains($sc, "/plugins/backupinfo/front/config.php"));
 check('section links to connections', str_contains($sc, 'Connection::getSearchURL()'));
 check('section shows FieldsBridge problems', str_contains($sc, '->problems()') && str_contains($sc, '->available()'));
-check('section offers containers and fields by name', str_contains($sc, '->containers()') && str_contains($sc, '->fields('));
+check('section offers containers and fields by name', str_contains($sc, '->containerOptions()') && str_contains($sc, '->fields('));
 check('section has the manual policy picker', str_contains($sc, "'manual_ids[]'") && str_contains($sc, "'multiple'"));
 check('sync now form only for UPDATE', (bool) preg_match('/if \(\$canedit\) \{[^}]*sync_now/s', $sc));
 check('forms closed with Html::closeForm (CSRF token)', substr_count($sc, 'Html::closeForm()') >= 2);
@@ -152,6 +152,40 @@ check('coverage counts', $b['counts'] === ['mandatory' => 3, 'protected' => 1, '
 check('coverage percent protected', $b['percent'] === 33);
 check('coverage lists missing (none then expired)', array_column($b['missing'], 'id') === [3, 2]);
 check('coverage empty is 0 %', CoveragePage::build([], [], 26, 1000)['percent'] === 0);
+
+// ---- Fields container stored by system name (review I2) ----
+$cs = [
+    ['id' => 5, 'name' => 'backupinformation', 'label' => 'Backup Information'],
+    ['id' => 6, 'name' => 'other', 'label' => 'Other'],
+];
+[$o, $sel, $cid] = SuiteConfig::containerChoices($cs, 'backupinformation');
+check('container option values are system names', array_keys($o) === ['', 'backupinformation', 'other']);
+check('container option text is label (name)', $o['backupinformation'] === 'Backup Information (backupinformation)');
+check('saved name preselected with its id', $sel === 'backupinformation' && $cid === 5);
+[$o, $sel, $cid] = SuiteConfig::containerChoices($cs, 'backup information');
+check('legacy saved label resolves and preselects the name', $sel === 'backupinformation' && $cid === 5);
+[$o, $sel, $cid] = SuiteConfig::containerChoices([['id' => 5, 'name' => 'backupinformation', 'label' => 'Renamed']], 'backupinformation');
+check('renamed label still resolves by name', $sel === 'backupinformation' && $cid === 5);
+[$o, $sel, $cid] = SuiteConfig::containerChoices($cs, 'gone');
+check('unknown saved value kept as "(not found)"', $sel === 'gone' && $cid === 0 && str_contains($o['gone'], 'not found'));
+[$o, $sel, $cid] = SuiteConfig::containerChoices([['id' => 5, 'name' => 'a', 'label' => 'Dup'], ['id' => 6, 'name' => 'b', 'label' => 'Dup']], 'Dup');
+check('ambiguous legacy label does not resolve', $cid === 0);
+
+// ---- Connections: add / update / purge (review I1) ----
+$prof = $read('src/Profile.php');
+check('matrix offers READ, UPDATE, CREATE, PURGE on config', (bool) preg_match("/'rights'\s*=>\s*\[READ => __\('Read'\), UPDATE => __\('Update'\), CREATE => __\('Create'\), PURGE => __\('Delete permanently'\)\],\s*'label'\s*=>\s*__\('Configure Backup Info'/", $prof));
+check('view and report stay READ only', substr_count($prof, "'rights'   => [READ => __('Read')],") === 2);
+check('Super-Admin seeded with ALLSTANDARDRIGHT on config', str_contains($prof, 'RightDefinition::CONFIG => ALLSTANDARDRIGHT'));
+check('seed via updateProfileRights (idempotent)', str_contains($prof, 'ProfileRight::updateProfileRights('));
+check('install calls Profile::install on every run', str_contains($read('install/install.php'), 'Profile::install();'));
+$cf = $read('front/connection.form.php');
+check('connection add: check CREATE', (bool) preg_match('/isset\(\$_POST\[\'add\'\]\)\) \{\s*\$connection->check\(-1, CREATE, \$_POST\);/', $cf));
+check('connection add: redirect to the new form', str_contains($cf, 'Connection::getFormURLWithID($new)'));
+check('connection update: check UPDATE', (bool) preg_match('/isset\(\$_POST\[\'update\'\]\)\) \{\s*\$connection->check\(\$id, UPDATE\);/', $cf));
+check('connection purge (delete alias): check PURGE', (bool) preg_match('/isset\(\$_POST\[\'purge\'\]\) \|\| isset\(\$_POST\[\'delete\'\]\)\) \{\s*\$connection->check\(\$id, PURGE\);\s*\$connection->delete\(\[\'id\' => \$id\], true\);\s*Html::redirect\(Connection::getSearchURL\(\)\);/', $cf));
+check('connections table has no trash (delete alias is safe)', !preg_match('/glpi_plugin_backupinfo_connections`[^;]*is_deleted/s', $read('install/install.php')));
+check('connection form page for id 0 (+ Add)', str_contains($cf, 'Connection::displayFullPageForItem($id, $menus, []);'));
+check('Menu: + Add link only with CREATE', (bool) preg_match("/haveRight\(RightDefinition::CONFIG, CREATE\)\) \{[^}]*'add' => '\/plugins\/backupinfo\/front\/connection\.form\.php'/", $read('src/Menu.php')));
 
 // ---- Menu ----
 $menu = $read('src/Menu.php');

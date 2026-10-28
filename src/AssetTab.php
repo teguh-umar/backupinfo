@@ -17,7 +17,7 @@ use Session;
 final class AssetTab
 {
     public const KEY      = 'backup';
-    public const ORDER    = 80;
+    public const ORDER    = 100;
     public const MAX_ROWS = 20;
 
     /** @return list<array{key: string, title: string, icon: string, order: int, render: string}> */

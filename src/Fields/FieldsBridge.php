@@ -188,6 +188,28 @@ class FieldsBridge
         }, false);
     }
 
+    /**
+     * Setup helper: active Fields containers attached to Computer, with their system name
+     * (what Setup stores) and label (what people see).
+     *
+     * @return list<array{id:int,name:string,label:string}>
+     */
+    public function containerOptions(): array
+    {
+        return $this->safely(function (): array {
+            if (!$this->gateway->pluginActive()) {
+                return [];
+            }
+            $out = [];
+            foreach ($this->gateway->containers() as $c) {
+                if ($c['is_active'] && in_array(self::ITEMTYPE, $c['itemtypes'], true)) {
+                    $out[] = ['id' => (int) $c['id'], 'name' => (string) $c['name'], 'label' => (string) $c['label']];
+                }
+            }
+            return $out;
+        }, []);
+    }
+
     /** Setup helper: active Fields containers attached to Computer, id => label. */
     public function containers(): array
     {

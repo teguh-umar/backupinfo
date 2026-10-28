@@ -88,14 +88,15 @@ $states = [
     'matched'   => [__('Matched', 'backupinfo'), ['matched']],
     'all'       => [__('All', 'backupinfo'), null],
 ];
-$state = isset($states[$_GET['state'] ?? '']) ? (string) $_GET['state'] : 'attention';
+$state = is_string($_GET['state'] ?? null) && isset($states[$_GET['state']]) ? $_GET['state'] : 'attention';
 $start = max(0, (int) ($_GET['start'] ?? 0));
 $limit = 50;
 
 // Visibility: the Computer's entity, or (no Computer) config READ.
 $entity  = getEntitiesRestrictCriteria('glpi_computers');
 $withPc  = ['glpi_computers.id' => ['>', 0]] + $entity;
-$visible = $canConfig ? ['OR' => [[$table . '.items_id' => 0], $withPc]] : $withPc;
+// Config READ also sees rows whose Computer was purged (no join hit), so they can be unpinned.
+$visible = $canConfig ? ['OR' => [[$table . '.items_id' => 0], ['glpi_computers.id' => null], $withPc]] : $withPc;
 $where   = [$visible];
 if ($states[$state][1] !== null) {
     $where[$table . '.match_state'] = $states[$state][1];
