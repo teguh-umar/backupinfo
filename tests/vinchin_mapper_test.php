@@ -135,7 +135,7 @@ check('source: history sorted first', str_contains($t->calls[1]['url'], 'sort=st
 
 $t = new FakeT();
 $t->queue = [bad(), bad(), okr(['total' => 0, 'rows' => []])];
-$src = new VinchinSource(new Client('h', $t, 'K'), false, fn() => []);
+$src = new VinchinSource(new Client('h', $t, 'K'), false, fn() => ['VM-Q']);
 $src->fetch();
 check('source: retries history without sort', count($t->calls) === 3 && !str_contains($t->calls[2]['url'], 'sort='));
 
@@ -144,6 +144,49 @@ $t->queue = [okr(['access_token' => 'TK']), okr(['total' => 0, 'rows' => []])];
 $src = new VinchinSource(new Client('h', $t, '', 'u', 'p'), true, fn() => []);
 $src->fetch();
 check('source: login mode logs in first', str_contains($t->calls[0]['url'], '/login'));
+
+// review round 1
+$h = JobHistoryMapper::map([
+    ['job_name' => 'DAILY_VM-AB', 'job_type' => 'Backup', 'job_status' => 'Successful', 'start_time' => ($now - 10) * 1000],
+    ['job_name' => 'mount-server', 'job_type' => 'Backup', 'job_status' => 'Successful', 'start_time' => ($now - 10) * 1000],
+    ['job_name' => 'VM-N1', 'job_type' => 'Backup', 'job_status' => 'Unsuccessful', 'start_time' => ($now - 10) * 1000],
+    ['job_name' => 'VM-N2', 'job_type' => 'Backup', 'job_status' => 'Incomplete', 'start_time' => ($now - 10) * 1000],
+], ['VM-A', 'VM-AB', 'mount-server', 'VM-N1', 'VM-N2'], $now);
+$names = array_map(fn($x) => $x->name, $h);
+sort($names);
+check('longest name wins', in_array('VM-AB', $names, true) && !in_array('VM-A', $names, true));
+check('job named mount-server not skipped', in_array('mount-server', $names, true));
+check('Unsuccessful/Incomplete rejected', !in_array('VM-N1', $names, true) && !in_array('VM-N2', $names, true));
+$m = ItemMapper::map([
+    ['item_name' => 'Vm-Case', 'module_type_des' => 'Virtualization', 'point_num' => 1],
+    ['item_name' => 'VM-CASE', 'module_type_des' => 'Virtualization', 'point_num' => 2],
+]);
+check('VM names differing in case merge', count($m) === 1 && $m[0]->restorePoints === 3);
+
+$t = new FakeT();
+$t->queue = [bad(), okr(['total' => 1, 'rows' => [['job_name' => 'VM-Q', 'job_type' => 'Backup', 'job_status' => 'Successful', 'start_time' => (time() - 60) * 1000]]])];
+$r = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => ['VM-Q']))->fetch();
+check('items auth error falls back to history', count($r) === 1);
+
+$t = new FakeT();
+$t->queue = [bad(), bad(), bad()];
+$e = null;
+try {
+    (new VinchinSource(new Client('h', $t, 'K'), false, fn() => ['VM-Q']))->fetch();
+} catch (\RuntimeException $x) {
+    $e = $x;
+}
+check('both fail throws with previous', $e !== null && $e->getPrevious() instanceof \RuntimeException && str_contains($e->getMessage(), 'job history also failed'));
+
+$t = new FakeT();
+$t->queue = [bad()];
+$e = null;
+try {
+    (new VinchinSource(new Client('h', $t, 'K'), false, fn() => []))->fetch();
+} catch (\RuntimeException $x) {
+    $e = $x;
+}
+check('empty vmNames after items failure throws', $e !== null && str_contains($e->getMessage(), 'Computer names') && count($t->calls) === 1);
 
 // registry
 $conn = ['type' => 'vinchin', 'host' => 'h', 'auth_mode' => 'api_key', 'api_key' => 'ENC', 'username' => '', 'password' => '', 'verify_tls' => 1];

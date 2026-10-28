@@ -11,6 +11,7 @@ use GlpiPlugin\Backupinfo\Source\BackupObject;
 final class JobHistoryMapper
 {
     private const SKIP = '/restore|recover|verif|migrat|mount|instant/i';
+    private const FAILED = '/unsucc|incomplet|fail|error|abort|cancel|失败|错误|取消/iu';
     private const SUCCESS = '/succe|complet|finish|ok|done|成功|完成/iu';
 
     /**
@@ -32,10 +33,11 @@ final class JobHistoryMapper
             }
             $job = trim((string) ($row['job_name'] ?? ''));
             $type = trim((string) ($row['job_type'] ?? ''));
-            if ($job === '' || preg_match(self::SKIP, $type . ' ' . $job)) {
+            if ($job === '' || preg_match(self::SKIP, $type)) {
                 continue;
             }
-            if (!preg_match(self::SUCCESS, (string) ($row['job_status'] ?? ''))) {
+            $status = (string) ($row['job_status'] ?? '');
+            if (preg_match(self::FAILED, $status) || !preg_match(self::SUCCESS, $status)) {
                 continue;
             }
             $time = ItemMapper::parseTime($row['finish_time'] ?? null) ?? ItemMapper::parseTime($row['start_time'] ?? null);

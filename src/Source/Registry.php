@@ -35,7 +35,7 @@ final class Registry
                     $decrypt((string) ($connectionRow['api_key'] ?? '')),
                     (string) ($connectionRow['username'] ?? ''),
                     $decrypt((string) ($connectionRow['password'] ?? '')),
-                    !empty($connectionRow['verify_tls'])
+                    !empty($connectionRow['verify_tls'] ?? 1)
                 ),
                 ($connectionRow['auth_mode'] ?? 'api_key') === 'login',
                 $vmNames ?? static fn(): array => []

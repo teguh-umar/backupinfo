@@ -34,11 +34,12 @@ final class ItemMapper
                     $ip = self::s($row['ip'] ?? '');
                 }
                 $time = self::parseTime($row['last_time'] ?? null);
-                if (!isset($vms[$name])) {
-                    $vms[$name] = ['name' => $name, 'ip' => $ip, 'time' => $time, 'points' => 0, 'jobs' => [],
+                $key = strtolower($name);
+                if (!isset($vms[$key])) {
+                    $vms[$key] = ['name' => $name, 'ip' => $ip, 'time' => $time, 'points' => 0, 'jobs' => [],
                         'size' => '', 'abnormal' => false, 'deleted' => false];
                 }
-                $vm = &$vms[$name];
+                $vm = &$vms[$key];
                 if ($vm['ip'] === '') {
                     $vm['ip'] = $ip;
                 }
