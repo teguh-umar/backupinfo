@@ -1,11 +1,12 @@
 <?php
 
+use GlpiPlugin\Backupinfo\Connection;
+use GlpiPlugin\Backupinfo\RightDefinition;
+
 include('../../../inc/includes.php');
+Session::checkRight(RightDefinition::CONFIG, READ);
 
-Session::checkRight('plugin_backupinfo_config', READ);
-
-Html::header('Backup Info - Connections', $_SERVER['PHP_SELF'], 'plugins', 'backupinfo', 'connection');
-
-Search::show('GlpiPlugin\\Backupinfo\\Connection');
-
+Html::header(Connection::getTypeName(2), '', \GlpiPlugin\Pgnsuite\Menu::SECTOR, 'backupinfo', 'connection');
+\GlpiPlugin\Pgnsuite\Menu::renderSubNav('backupinfo', 'connection');
+Search::show(Connection::class);
 Html::footer();

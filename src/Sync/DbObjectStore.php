@@ -103,6 +103,41 @@ final class DbObjectStore implements ObjectStore
         return $out;
     }
 
+    /**
+     * Objects matched to one Computer, from active connections, each with source_label
+     * and the connection's last_sync (for the asset tab).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function forItem(int $itemsId): array
+    {
+        global $DB;
+
+        $labels = Registry::types();
+        $conns  = [];
+        foreach ($DB->request(['SELECT' => ['id', 'type', 'name', 'last_sync'], 'FROM' => 'glpi_plugin_backupinfo_connections', 'WHERE' => ['is_active' => 1]]) as $c) {
+            $conns[(int) $c['id']] = $c;
+        }
+
+        $out = [];
+        foreach ($DB->request([
+            'FROM'  => self::TABLE,
+            'WHERE' => ['itemtype' => 'Computer', 'items_id' => $itemsId],
+            'ORDER' => ['last_backup DESC'],
+        ]) as $row) {
+            $conn = $conns[(int) $row['connections_id']] ?? null;
+            if ($conn === null) {
+                continue;
+            }
+            $r = self::fromDb($row);
+            $r['source_label']    = $labels[(string) $conn['type']] ?? (string) $conn['type'];
+            $r['connection_name'] = (string) $conn['name'];
+            $r['last_sync']       = (string) ($conn['last_sync'] ?? '');
+            $out[] = $r;
+        }
+        return $out;
+    }
+
     /** @return array<string, mixed> last_backup as int epoch or null */
     private static function fromDb(array $row): array
     {

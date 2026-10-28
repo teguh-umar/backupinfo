@@ -33,6 +33,22 @@ final class Cron extends \CommonGLPI
 
     public static function cronSync(CronTask $task): int
     {
+        $run = self::runSync(static function (string $line) use ($task): void {
+            $task->log($line);
+        });
+        $task->addVolume($run['fetched']);
+        return SyncService::cronResult($run['results'], $run['touched']);
+    }
+
+    /**
+     * One full sync of every active connection, then the Fields update. Shared by the
+     * cron and Setup's "Sync now" so both run exactly the same code.
+     *
+     * @param callable(string): void $log receives one line per connection / step (no secrets)
+     * @return array{results: list<array{id:int,name:string,status:string,error:string,stats:array}>, fetched: int, touched: int, fields_error: string}
+     */
+    public static function runSync(callable $log): array
+    {
         global $DB;
 
         $now     = time();
@@ -73,7 +89,7 @@ final class Cron extends \CommonGLPI
             $DB->update(self::CONNECTIONS, $update, ['id' => $r['id']]);
             if ($r['status'] === 'ok') {
                 $fetched += $r['stats']['fetched'];
-                $task->log(sprintf(
+                $log(sprintf(
                     '%s: fetched %d, matched %d, needs review %d, not found %d',
                     $r['name'],
                     $r['stats']['fetched'],
@@ -84,29 +100,40 @@ final class Cron extends \CommonGLPI
             } else {
                 // Kept visible on the connection; the other connections still ran.
                 Toolbox::logInFile('backupinfo', 'Sync ' . $r['name'] . ': ' . $r['error'] . "\n");
-                $task->log($r['name'] . ': ' . $r['error']);
+                $log($r['name'] . ': ' . $r['error']);
             }
         }
 
-        $touched = 0;
+        $fieldsError = '';
+        $touched     = self::applyFields($out['affected'], $now, $fieldsError);
+        $log($fieldsError === '' ? sprintf('assets updated in Fields: %d', $touched) : 'Fields update failed: ' . $fieldsError);
+
+        return ['results' => $out['results'], 'fetched' => $fetched, 'touched' => $touched, 'fields_error' => $fieldsError];
+    }
+
+    /**
+     * Writes Backup Status / Media to every matched Computer plus $extraItemIds (those that
+     * just lost their objects). Never throws; a failure is logged and returned in $error.
+     *
+     * @param list<int> $extraItemIds
+     */
+    public static function applyFields(array $extraItemIds, ?int $now = null, string &$error = ''): int
+    {
+        $error = '';
         try {
-            $cfg     = Config::getConfigurationValues('plugin:backupinfo', ['rpo_hours']);
-            $rpo     = (int) ($cfg['rpo_hours'] ?? 26);
-            $touched = $service->applyToAssets(
-                $store,
+            $cfg = Config::getConfigurationValues('plugin:backupinfo', ['rpo_hours']);
+            $rpo = (int) ($cfg['rpo_hours'] ?? 26);
+            return (new SyncService())->applyToAssets(
+                new DbObjectStore(),
                 FieldsBridge::fromConfig(),
                 $rpo > 0 ? $rpo : 26,
-                $now,
-                $out['affected']
+                $now ?? time(),
+                $extraItemIds
             );
-            $task->log(sprintf('assets updated in Fields: %d', $touched));
         } catch (\Throwable $e) {
-            $line = SyncService::errorLine($e);
-            Toolbox::logInFile('backupinfo', 'applyToAssets: ' . $line . "\n");
-            $task->log('Fields update failed: ' . $line);
+            $error = SyncService::errorLine($e);
+            Toolbox::logInFile('backupinfo', 'applyToAssets: ' . $error . "\n");
+            return 0;
         }
-
-        $task->addVolume($fetched);
-        return SyncService::cronResult($out['results'], $touched);
     }
 }

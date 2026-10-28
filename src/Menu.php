@@ -6,49 +6,41 @@ use Session;
 
 class Menu
 {
+    /** Entry in the shared Tools ICT menu: Coverage, Objects, Connections, each behind its right. */
     public static function entry(): ?array
     {
-        if (!Session::haveRight(RightDefinition::VIEW, READ) && !Session::haveRight(RightDefinition::CONFIG, READ)) {
+        $options = [];
+        if (Session::haveRight(RightDefinition::REPORT, READ)) {
+            $options['coverage'] = [
+                'title' => __('Coverage', 'backupinfo'),
+                'page'  => '/plugins/backupinfo/front/coverage.php',
+                'icon'  => 'ti ti-shield-check',
+            ];
+        }
+        if (Session::haveRight(RightDefinition::VIEW, READ)) {
+            $options['objects'] = [
+                'title' => __('Backup objects', 'backupinfo'),
+                'page'  => '/plugins/backupinfo/front/objects.php',
+                'icon'  => 'ti ti-list-search',
+            ];
+        }
+        if (Session::haveRight(RightDefinition::CONFIG, READ)) {
+            $options['connection'] = [
+                'title' => __('Connections', 'backupinfo'),
+                'page'  => '/plugins/backupinfo/front/connection.php',
+                'icon'  => 'ti ti-plug-connected',
+            ];
+        }
+        if ($options === []) {
             return null;
         }
 
         return [
             'title'   => 'Backup Info',
             'icon'    => 'ti ti-database-export',
-            'page'    => '/plugins/backupinfo/front/dashboard.php',
+            'page'    => reset($options)['page'],
             'order'   => 100,
-            'options' => [
-                'dashboard' => [
-                    'title' => 'Dashboard',
-                    'page'  => '/plugins/backupinfo/front/dashboard.php',
-                    'icon'  => 'ti ti-layout-dashboard',
-                ],
-                'assets' => [
-                    'title' => 'Protected Assets',
-                    'page'  => '/plugins/backupinfo/front/assets.php',
-                    'icon'  => 'ti ti-server',
-                ],
-                'jobs' => [
-                    'title' => 'Backup Jobs',
-                    'page'  => '/plugins/backupinfo/front/jobs.php',
-                    'icon'  => 'ti ti-list-check',
-                ],
-                'storage' => [
-                    'title' => 'Backup Storage',
-                    'page'  => '/plugins/backupinfo/front/storage.php',
-                    'icon'  => 'ti ti-database',
-                ],
-                'report' => [
-                    'title' => 'Report',
-                    'page'  => '/plugins/backupinfo/front/report.php',
-                    'icon'  => 'ti ti-file-report',
-                ],
-                'connection' => [
-                    'title' => 'Connections',
-                    'page'  => '/plugins/backupinfo/front/connection.php',
-                    'icon'  => 'ti ti-plug-connected',
-                ],
-            ],
+            'options' => $options,
         ];
     }
 }

@@ -67,4 +67,12 @@ function plugin_init_backupinfo()
     }
     \GlpiPlugin\Pgnsuite\ConfigTab::register();
     $PLUGIN_HOOKS[\GlpiPlugin\Pgnsuite\ConfigTab::HOOK]['backupinfo'] = \GlpiPlugin\Backupinfo\SuiteConfig::class . '::section';
+
+    // "Backup" section of the shared PGN Suite asset tab, on Computer only (hub §5).
+    // Search options on Computer: plugin_backupinfo_getAddSearchOptionsNew() in hook.php.
+    if (!class_exists(\GlpiPlugin\Pgnsuite\AssetTab::class, false)) {
+        require_once __DIR__ . '/lib/pgnsuite/AssetTab.php';
+    }
+    \GlpiPlugin\Pgnsuite\AssetTab::register(['Computer']);
+    $PLUGIN_HOOKS[\GlpiPlugin\Pgnsuite\AssetTab::HOOK]['backupinfo'] = \GlpiPlugin\Backupinfo\AssetTab::class . '::sections';
 }
