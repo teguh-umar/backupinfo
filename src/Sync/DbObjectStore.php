@@ -57,13 +57,34 @@ final class DbObjectStore implements ObjectStore
         }
     }
 
+    public function purgeInactive(): array
+    {
+        global $DB;
+
+        $active = [];
+        foreach ($DB->request(['SELECT' => ['id'], 'FROM' => 'glpi_plugin_backupinfo_connections', 'WHERE' => ['is_active' => 1]]) as $c) {
+            $active[] = (int) $c['id'];
+        }
+
+        $where  = $active === [] ? [] : ['NOT' => ['connections_id' => $active]];
+        $items  = [];
+        foreach ($DB->request(['FROM' => self::TABLE, 'WHERE' => $where]) as $row) {
+            if ((int) $row['items_id'] > 0) {
+                $items[(int) $row['items_id']] = true;
+            }
+        }
+        $DB->delete(self::TABLE, $where === [] ? ['id' => ['>', 0]] : $where);
+
+        return array_keys($items);
+    }
+
     public function matched(): array
     {
         global $DB;
 
         $labels = Registry::types();
         $types  = [];
-        foreach ($DB->request(['SELECT' => ['id', 'type'], 'FROM' => 'glpi_plugin_backupinfo_connections']) as $c) {
+        foreach ($DB->request(['SELECT' => ['id', 'type'], 'FROM' => 'glpi_plugin_backupinfo_connections', 'WHERE' => ['is_active' => 1]]) as $c) {
             $types[(int) $c['id']] = (string) $c['type'];
         }
 
@@ -72,6 +93,9 @@ final class DbObjectStore implements ObjectStore
             'FROM'  => self::TABLE,
             'WHERE' => ['itemtype' => 'Computer', 'items_id' => ['>', 0]],
         ]) as $row) {
+            if (!isset($types[(int) $row['connections_id']])) {
+                continue; // inactive or deleted connection: no longer counts as a backup
+            }
             $r = self::fromDb($row);
             $r['source_label'] = $labels[$types[(int) $row['connections_id']] ?? ''] ?? '';
             $out[] = $r;

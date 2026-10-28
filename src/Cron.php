@@ -54,37 +54,42 @@ final class Cron extends \CommonGLPI
             return $names;
         };
 
-        $affected = [];
-        $ran      = 0;
-        $fetched  = 0;
-
+        $connections = [];
         foreach ($DB->request(['FROM' => self::CONNECTIONS, 'WHERE' => ['is_active' => 1]]) as $conn) {
-            $ran++;
-            $update = ['last_sync' => date('Y-m-d H:i:s', $now)];
-            try {
-                $source   = Registry::create($conn, $decrypt, $vmNames);
-                $stats    = $service->run($conn, $source, $store, $matcher, $now);
-                $affected = array_merge($affected, $stats['affected']);
-                $fetched += $stats['fetched'];
-                $update  += ['last_status' => 'ok', 'last_error' => ''];
-                $task->log(sprintf(
-                    '%s: fetched %d, matched %d, needs review %d, not found %d',
-                    $conn['name'],
-                    $stats['fetched'],
-                    $stats['matched'],
-                    $stats['review'],
-                    $stats['unmatched']
-                ));
-            } catch (\Throwable $e) {
-                // Kept visible on the connection; the next connection still runs.
-                $line    = SyncService::errorLine($e);
-                $update += ['last_status' => 'error', 'last_error' => $line];
-                Toolbox::logInFile('backupinfo', 'Sync ' . $conn['name'] . ': ' . $line . "\n");
-                $task->log($conn['name'] . ': ' . $line);
-            }
-            $DB->update(self::CONNECTIONS, $update, ['id' => (int) $conn['id']]);
+            $connections[] = $conn;
         }
 
+        $out = $service->runAll(
+            $connections,
+            static fn(array $conn) => Registry::create($conn, $decrypt, $vmNames),
+            $store,
+            $matcher,
+            $now
+        );
+
+        $fetched = 0;
+        foreach ($out['results'] as $r) {
+            $update = ['last_sync' => date('Y-m-d H:i:s', $now), 'last_status' => $r['status'], 'last_error' => $r['error']];
+            $DB->update(self::CONNECTIONS, $update, ['id' => $r['id']]);
+            if ($r['status'] === 'ok') {
+                $fetched += $r['stats']['fetched'];
+                $task->log(sprintf(
+                    '%s: fetched %d, matched %d, needs review %d, not found %d',
+                    $r['name'],
+                    $r['stats']['fetched'],
+                    $r['stats']['matched'],
+                    $r['stats']['review'],
+                    $r['stats']['unmatched']
+                ));
+            } else {
+                // Kept visible on the connection; the other connections still ran.
+                Toolbox::logInFile('backupinfo', 'Sync ' . $r['name'] . ': ' . $r['error'] . "
+");
+                $task->log($r['name'] . ': ' . $r['error']);
+            }
+        }
+
+        $touched = 0;
         try {
             $cfg     = Config::getConfigurationValues('plugin:backupinfo', ['rpo_hours']);
             $rpo     = (int) ($cfg['rpo_hours'] ?? 26);
@@ -93,7 +98,7 @@ final class Cron extends \CommonGLPI
                 FieldsBridge::fromConfig(),
                 $rpo > 0 ? $rpo : 26,
                 $now,
-                array_values(array_unique($affected))
+                $out['affected']
             );
             $task->log(sprintf('assets updated in Fields: %d', $touched));
         } catch (\Throwable $e) {
@@ -103,6 +108,6 @@ final class Cron extends \CommonGLPI
         }
 
         $task->addVolume($fetched);
-        return $ran > 0 ? 1 : 0;
+        return SyncService::cronResult($out['results'], $touched);
     }
 }

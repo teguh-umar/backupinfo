@@ -93,6 +93,55 @@ class SyncService
     }
 
     /**
+     * Syncs every connection; one failure (source factory or run) is recorded and the next
+     * connection still runs. Rows of inactive or deleted connections are purged first.
+     *
+     * @param list<array<string, mixed>> $connections active connection rows
+     * @param callable(array): BackupSource $sourceFactory
+     * @return array{results: list<array{id:int,name:string,status:string,error:string,stats:array}>, affected: list<int>}
+     */
+    public function runAll(array $connections, callable $sourceFactory, ObjectStore $store, Matcher $m, int $nowS): array
+    {
+        $affected = [];
+        foreach ($store->purgeInactive() as $id) {
+            $affected[(int) $id] = true;
+        }
+
+        $results = [];
+        foreach ($connections as $conn) {
+            $res = ['id' => (int) $conn['id'], 'name' => (string) ($conn['name'] ?? ''), 'status' => 'ok', 'error' => '', 'stats' => []];
+            try {
+                $stats = $this->run($conn, $sourceFactory($conn), $store, $m, $nowS);
+                foreach ($stats['affected'] as $id) {
+                    $affected[(int) $id] = true;
+                }
+                unset($stats['affected']);
+                $res['stats'] = $stats;
+            } catch (\Throwable $e) {
+                $res['status'] = 'error';
+                $res['error']  = self::errorLine($e);
+            }
+            $results[] = $res;
+        }
+
+        return ['results' => $results, 'affected' => array_map('intval', array_keys($affected))];
+    }
+
+    /** GLPI cron return: -1 every connection failed, 1 something synced or was applied, 0 nothing to do. */
+    public static function cronResult(array $results, int $touched): int
+    {
+        foreach ($results as $r) {
+            if ($r['status'] === 'ok') {
+                return 1;
+            }
+        }
+        if ($touched > 0) {
+            return 1;
+        }
+        return $results === [] ? 0 : -1;
+    }
+
+    /**
      * Writes Backup Status / Media to Computers that currently have matched objects, plus
      * $extraItemIds (items that just lost theirs get hasBackup=false, blank media). Computers
      * never matched are never touched.

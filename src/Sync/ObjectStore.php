@@ -18,7 +18,14 @@ interface ObjectStore
     public function delete(int $connectionId, array $sourceKeys): void;
 
     /**
-     * Every row currently matched to a Computer (itemtype Computer, items_id > 0), all
+     * Deletes the rows of connections that no longer exist or are inactive.
+     *
+     * @return list<int> items_id (> 0) of the deleted rows
+     */
+    public function purgeInactive(): array;
+
+    /**
+     * Every row of an existing, active connection currently matched to a Computer (itemtype Computer, items_id > 0), all
      * connections. Rows may carry 'source_label' (e.g. "Vinchin") for the media text.
      *
      * @return list<array<string, mixed>>

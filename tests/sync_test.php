@@ -67,11 +67,26 @@ final class MemStore implements ObjectStore
             unset($this->rows[$connectionId . '|' . $k]);
         }
     }
+    /** @var list<int> ids of active connections */
+    public array $active = [1, 2, 3];
+    public function purgeInactive(): array
+    {
+        $items = [];
+        foreach ($this->rows as $k => $r) {
+            if (!in_array($r['connections_id'], $this->active, true)) {
+                if ($r['items_id'] > 0) {
+                    $items[$r['items_id']] = true;
+                }
+                unset($this->rows[$k]);
+            }
+        }
+        return array_keys($items);
+    }
     public function matched(): array
     {
         return array_values(array_filter(
             $this->rows,
-            fn ($r) => $r['itemtype'] === 'Computer' && $r['items_id'] > 0
+            fn ($r) => $r['itemtype'] === 'Computer' && $r['items_id'] > 0 && in_array($r['connections_id'], $this->active, true)
         ));
     }
 }
@@ -176,5 +191,42 @@ check('fields unavailable writes nothing', $svc->applyToAssets($store, $f, 26, 9
 // error line
 $line = SyncService::errorLine(new RuntimeException("a\nb\r\n" . str_repeat('x', 400)));
 check('errorLine one line, capped', strlen($line) <= 255 && !str_contains($line, "\n") && !str_contains($line, "\r"));
+
+// runAll: first source throws, second still syncs, first rows intact
+$store = new MemStore();
+$svc->run(['id' => 1], new FakeSource([obj('a', 'web1')]), $store, $m, 1);
+$sources = [1 => new ThrowingSource(), 2 => new FakeSource([obj('z', 'web1')])];
+$out = $svc->runAll([['id' => 1, 'name' => 'A'], ['id' => 2, 'name' => 'B']], fn ($c) => $sources[$c['id']], $store, $m, 2);
+check('failing connection reported as error', $out['results'][0]['status'] === 'error' && $out['results'][0]['error'] === 'down');
+check('error is one line', !str_contains($out['results'][0]['error'], "
+"));
+check('second connection still synced', $out['results'][1]['status'] === 'ok' && isset($store->rows['2|z']) && $out['results'][1]['stats']['fetched'] === 1);
+check('failed connection rows kept (no stale delete)', isset($store->rows['1|a']));
+check('affected includes second connection match', in_array(7, $out['affected'], true));
+$out = $svc->runAll([['id' => 1]], function ($c) { throw new RuntimeException('bad key abc'); }, $store, $m, 3);
+check('factory throw is caught too', $out['results'][0]['status'] === 'error' && isset($store->rows['1|a']));
+
+// inactive connection: purged, item written (false, '')
+$store = new MemStore();
+$svc->run(['id' => 1], new FakeSource([obj('a', 'web1')]), $store, $m, 1);
+$svc->run(['id' => 2], new FakeSource([obj('b', 'dup'), obj('c', 'x', '10.0.0.5')]), $store, $m, 1);
+$store->rows['1|a']['source_label'] = 'Vinchin';
+$store->active = [2];
+$out = $svc->runAll([], fn ($c) => new FakeSource([]), $store, $m, 2);
+check('inactive connection rows purged', !isset($store->rows['1|a']) && isset($store->rows['2|c']));
+check('purged item affected', $out['affected'] === [7]);
+$f = new FakeBridge();
+$svc->applyToAssets($store, $f, 26, 3, $out['affected']);
+$w = array_values(array_filter($f->writes, fn ($x) => $x[1] === 7));
+check('item left without objects gets write(false, "")', count($w) === 1 && $w[0][2] === false && $w[0][3] === '');
+$store->active = [];
+check('matched() ignores inactive connections', $store->matched() === []);
+
+// cron result mapping
+$ok = ['status' => 'ok']; $bad = ['status' => 'error'];
+check('cronResult all failed -1', SyncService::cronResult([$bad, $bad], 0) === -1);
+check('cronResult one ok 1', SyncService::cronResult([$bad, $ok], 0) === 1);
+check('cronResult applied 1', SyncService::cronResult([$bad], 2) === 1);
+check('cronResult nothing 0', SyncService::cronResult([], 0) === 0);
 
 done();
