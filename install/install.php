@@ -1,133 +1,130 @@
 <?php
 
+use GlpiPlugin\Backupinfo\Cron;
+
 function plugin_backupinfo_install()
 {
     global $DB;
 
     $migration = new Migration(PLUGIN_BACKUPINFO_VERSION);
+    $ctx       = 'plugin:backupinfo';
 
-    // Connections table
+    // Connections (rc2 table is kept and upgraded in place)
     if (!$DB->tableExists('glpi_plugin_backupinfo_connections')) {
-        $query = "CREATE TABLE `glpi_plugin_backupinfo_connections` (
+        $DB->doQuery("CREATE TABLE `glpi_plugin_backupinfo_connections` (
             `id` int unsigned NOT NULL AUTO_INCREMENT,
             `name` varchar(255) NOT NULL DEFAULT '',
             `type` varchar(50) NOT NULL DEFAULT 'vinchin',
-            `site` varchar(100) DEFAULT NULL,
-            `api_url` varchar(255) DEFAULT NULL,
+            `host` varchar(255) DEFAULT NULL,
+            `auth_mode` varchar(30) NOT NULL DEFAULT 'token',
             `api_key` text,
-            `api_secret` text,
-            `token` text,
+            `username` varchar(255) DEFAULT NULL,
+            `password` text,
+            `verify_tls` tinyint NOT NULL DEFAULT 1,
             `is_active` tinyint NOT NULL DEFAULT 1,
+            `last_sync` timestamp NULL DEFAULT NULL,
+            `last_status` varchar(50) DEFAULT NULL,
+            `last_error` text,
             `comment` text,
             `date_creation` timestamp NULL DEFAULT NULL,
             `date_mod` timestamp NULL DEFAULT NULL,
             PRIMARY KEY (`id`),
             KEY `is_active` (`is_active`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
-        $DB->doQuery($query);
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    } else {
+        $added = [
+            'host'        => "varchar(255) DEFAULT NULL",
+            'auth_mode'   => "varchar(30) NOT NULL DEFAULT 'token'",
+            'username'    => "varchar(255) DEFAULT NULL",
+            'password'    => "text",
+            'verify_tls'  => "tinyint NOT NULL DEFAULT 1",
+            'last_sync'   => "timestamp NULL DEFAULT NULL",
+            'last_status' => "varchar(50) DEFAULT NULL",
+            'last_error'  => "text",
+        ];
+        foreach ($added as $field => $definition) {
+            if (!$DB->fieldExists('glpi_plugin_backupinfo_connections', $field)) {
+                $DB->doQuery("ALTER TABLE `glpi_plugin_backupinfo_connections` ADD COLUMN `$field` $definition");
+            }
+        }
     }
 
-    // Protected assets
-    if (!$DB->tableExists('glpi_plugin_backupinfo_assets')) {
-        $query = "CREATE TABLE `glpi_plugin_backupinfo_assets` (
+    // Backed-up objects reported by the source
+    if (!$DB->tableExists('glpi_plugin_backupinfo_objects')) {
+        $DB->doQuery("CREATE TABLE `glpi_plugin_backupinfo_objects` (
             `id` int unsigned NOT NULL AUTO_INCREMENT,
             `connections_id` int unsigned NOT NULL DEFAULT 0,
-            `items_id` int unsigned NOT NULL DEFAULT 0,
-            `itemtype` varchar(100) DEFAULT NULL,
-            `vm_name` varchar(255) DEFAULT NULL,
-            `vm_uuid` varchar(255) DEFAULT NULL,
-            `host_name` varchar(255) DEFAULT NULL,
-            `ip_address` varchar(255) DEFAULT NULL,
-            `os_type` varchar(100) DEFAULT NULL,
-            `backup_enabled` tinyint NOT NULL DEFAULT 0,
-            `last_backup_date` timestamp NULL DEFAULT NULL,
-            `protection_policy` varchar(255) DEFAULT NULL,
-            `source` varchar(50) DEFAULT 'api',
-            `date_creation` timestamp NULL DEFAULT NULL,
-            `date_mod` timestamp NULL DEFAULT NULL,
-            PRIMARY KEY (`id`),
-            KEY `connections_id` (`connections_id`),
-            KEY `items_id` (`items_id`),
-            KEY `itemtype` (`itemtype`),
-            KEY `vm_name` (`vm_name`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
-        $DB->doQuery($query);
-    }
-
-    // Backup jobs
-    if (!$DB->tableExists('glpi_plugin_backupinfo_jobs')) {
-        $query = "CREATE TABLE `glpi_plugin_backupinfo_jobs` (
-            `id` int unsigned NOT NULL AUTO_INCREMENT,
-            `connections_id` int unsigned NOT NULL DEFAULT 0,
-            `assets_id` int unsigned NOT NULL DEFAULT 0,
-            `job_id` varchar(255) DEFAULT NULL,
-            `job_name` varchar(255) DEFAULT NULL,
-            `vm_name` varchar(255) DEFAULT NULL,
-            `status` varchar(50) DEFAULT NULL,
-            `type` varchar(50) DEFAULT NULL,
-            `start_time` timestamp NULL DEFAULT NULL,
-            `end_time` timestamp NULL DEFAULT NULL,
-            `duration` int unsigned DEFAULT 0,
-            `size_bytes` bigint unsigned DEFAULT 0,
-            `transferred_bytes` bigint unsigned DEFAULT 0,
-            `error_message` text,
-            `source` varchar(50) DEFAULT 'api',
-            `date_creation` timestamp NULL DEFAULT NULL,
-            PRIMARY KEY (`id`),
-            KEY `connections_id` (`connections_id`),
-            KEY `assets_id` (`assets_id`),
-            KEY `status` (`status`),
-            KEY `start_time` (`start_time`),
-            KEY `vm_name` (`vm_name`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
-        $DB->doQuery($query);
-    }
-
-    // Storage
-    if (!$DB->tableExists('glpi_plugin_backupinfo_storages')) {
-        $query = "CREATE TABLE `glpi_plugin_backupinfo_storages` (
-            `id` int unsigned NOT NULL AUTO_INCREMENT,
-            `connections_id` int unsigned NOT NULL DEFAULT 0,
+            `source_key` varchar(255) NOT NULL DEFAULT '',
             `name` varchar(255) DEFAULT NULL,
-            `type` varchar(100) DEFAULT NULL,
-            `site` varchar(100) DEFAULT NULL,
-            `total_size` bigint unsigned DEFAULT 0,
-            `used_size` bigint unsigned DEFAULT 0,
-            `free_size` bigint unsigned DEFAULT 0,
-            `unit` varchar(10) DEFAULT 'GB',
-            `status` varchar(50) DEFAULT NULL,
-            `source` varchar(50) DEFAULT 'api',
-            `date_creation` timestamp NULL DEFAULT NULL,
+            `ip` varchar(255) DEFAULT NULL,
+            `kind` varchar(50) DEFAULT NULL,
+            `job_name` varchar(255) DEFAULT NULL,
+            `last_backup` timestamp NULL DEFAULT NULL,
+            `restore_points` int unsigned NOT NULL DEFAULT 0,
+            `data_size` bigint unsigned NOT NULL DEFAULT 0,
+            `abnormal_chain` tinyint NOT NULL DEFAULT 0,
+            `source_deleted` tinyint NOT NULL DEFAULT 0,
+            `itemtype` varchar(100) DEFAULT NULL,
+            `items_id` int unsigned NOT NULL DEFAULT 0,
+            `match_state` varchar(30) DEFAULT NULL,
             `date_mod` timestamp NULL DEFAULT NULL,
             PRIMARY KEY (`id`),
-            KEY `connections_id` (`connections_id`),
-            KEY `site` (`site`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
-        $DB->doQuery($query);
+            UNIQUE KEY `unicity` (`connections_id`, `source_key`),
+            KEY `item` (`itemtype`, `items_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
     }
 
-    // Mappings
-    if (!$DB->tableExists('glpi_plugin_backupinfo_mappings')) {
-        $query = "CREATE TABLE `glpi_plugin_backupinfo_mappings` (
+    // Manual policy: assets expected to be backed up
+    if (!$DB->tableExists('glpi_plugin_backupinfo_policies')) {
+        $DB->doQuery("CREATE TABLE `glpi_plugin_backupinfo_policies` (
             `id` int unsigned NOT NULL AUTO_INCREMENT,
-            `vm_name` varchar(255) DEFAULT NULL,
-            `vm_uuid` varchar(255) DEFAULT NULL,
+            `itemtype` varchar(100) NOT NULL DEFAULT '',
             `items_id` int unsigned NOT NULL DEFAULT 0,
-            `itemtype` varchar(100) DEFAULT NULL,
-            `entities_id` int unsigned NOT NULL DEFAULT 0,
-            `is_manual` tinyint NOT NULL DEFAULT 0,
-            `date_creation` timestamp NULL DEFAULT NULL,
-            `date_mod` timestamp NULL DEFAULT NULL,
             PRIMARY KEY (`id`),
-            KEY `vm_name` (`vm_name`),
-            KEY `vm_uuid` (`vm_uuid`),
-            KEY `items_id` (`items_id`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
-        $DB->doQuery($query);
+            UNIQUE KEY `unicity` (`itemtype`, `items_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
     }
+
+    // One-shot: drop the rc1/rc2 tables (install runs on every upgrade)
+    $marker = Config::getConfigurationValues($ctx, ['rc_tables_dropped']);
+    if (empty($marker['rc_tables_dropped'])) {
+        foreach (
+            [
+                'glpi_plugin_backupinfo_assets',
+                'glpi_plugin_backupinfo_jobs',
+                'glpi_plugin_backupinfo_storages',
+                'glpi_plugin_backupinfo_mappings',
+            ] as $old
+        ) {
+            $DB->doQuery("DROP TABLE IF EXISTS `$old`");
+        }
+        Config::setConfigurationValues($ctx, ['rc_tables_dropped' => 1]);
+    }
+
+    // Config defaults: only keys that are not set yet
+    $defaults = [
+        'rpo_hours'              => 26,
+        'policy_mode'            => 'field',
+        'fields_container'       => '',
+        'fields_status_field'    => '',
+        'fields_media_field'     => '',
+        'fields_mandatory_field' => '',
+    ];
+    $current = Config::getConfigurationValues($ctx, array_keys($defaults));
+    $missing = array_diff_key($defaults, $current);
+    if ($missing !== []) {
+        Config::setConfigurationValues($ctx, $missing);
+    }
+
+    // Cron (class resolved by name, it need not exist at install time)
+    CronTask::register(Cron::class, 'Sync', HOUR_TIMESTAMP, [
+        'comment' => 'Pull backup status from the configured sources',
+        'mode'    => CronTask::MODE_EXTERNAL,
+        'state'   => CronTask::STATE_WAITING,
+    ]);
 
     // Set rights for Super-Admin
-    if (class_exists('GlpiPlugin\\Backupinfo\\Profile')) {
+    if (class_exists('GlpiPlugin\Backupinfo\Profile')) {
         \GlpiPlugin\Backupinfo\Profile::install();
     }
 
