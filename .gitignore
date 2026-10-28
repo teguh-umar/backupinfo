@@ -1,0 +1,7 @@
+# business documents and build output never enter the repo
+*.pdf
+*.xlsx
+*.zip
+
+# reference app from the user (Python backup monitor); study only, never shipped
+python/

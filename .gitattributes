@@ -1,0 +1,3 @@
+# shared suite files stay byte-identical to shared/pgnsuite (hub §4)
+lib/pgnsuite/*.php -text
+front/pgnsuite.settings.php -text

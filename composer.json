@@ -1,0 +1,14 @@
+{
+  "name": "pgn/backupinfo",
+  "description": "PGN GLPI Suite - Backup Info (Vinchin/Veritas)",
+  "license": "GPL-3.0-or-later",
+  "require": {},
+  "autoload": {
+    "psr-4": {
+      "GlpiPlugin\\Backupinfo\\": "src/"
+    }
+  },
+  "config": {
+    "optimize-autoloader": true
+  }
+}
