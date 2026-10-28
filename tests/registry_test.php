@@ -5,6 +5,13 @@ require __DIR__ . '/bootstrap.php';
 require BI_ROOT . '/src/Source/BackupObject.php';
 require BI_ROOT . '/src/Source/BackupSource.php';
 require BI_ROOT . '/src/Source/Registry.php';
+require BI_ROOT . '/src/Vinchin/Signer.php';
+require BI_ROOT . '/src/Vinchin/Transport.php';
+require BI_ROOT . '/src/Vinchin/CurlTransport.php';
+require BI_ROOT . '/src/Vinchin/Client.php';
+require BI_ROOT . '/src/Vinchin/ItemMapper.php';
+require BI_ROOT . '/src/Vinchin/JobHistoryMapper.php';
+require BI_ROOT . '/src/Vinchin/VinchinSource.php';
 
 use GlpiPlugin\Backupinfo\Source\BackupObject;
 use GlpiPlugin\Backupinfo\Source\Registry;
@@ -29,6 +36,13 @@ try {
     $threw = true;
 }
 check('create() throws InvalidArgumentException when type is missing', $threw);
+
+// Vinchin row builds a source (full mapping covered in vinchin_mapper_test.php).
+$vinchinRow = ['type' => 'vinchin', 'host' => 'h', 'auth_mode' => 'api_key', 'api_key' => 'ENC', 'verify_tls' => 1];
+$seen = [];
+$src = Registry::create($vinchinRow, function (string $s) use (&$seen): string { $seen[] = $s; return 'dec'; });
+check('create() builds a BackupSource for vinchin', $src instanceof \GlpiPlugin\Backupinfo\Source\BackupSource);
+check('create() decrypts the api key', in_array('ENC', $seen, true));
 
 // BackupObject carries every field from the contract.
 $obj = new BackupObject(
