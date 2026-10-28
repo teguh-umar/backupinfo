@@ -57,7 +57,8 @@ behind one interface so Sangfor SCP / Hyper-V are one class each later.
   `(connections_id, source_key)`; index `(itemtype, items_id)`), `glpi_plugin_backupinfo_policies`
   (`id, itemtype, items_id`; unique `(itemtype, items_id)`).
 - Config context `plugin:backupinfo` keys: `rpo_hours` (26), `policy_mode` (`field` | `manual`, default `field`),
-  `fields_container_id`, `fields_status_field`, `fields_media_field`, `fields_mandatory_field` (all default '').
+  `fields_container`, `fields_status_field`, `fields_media_field`, `fields_mandatory_field` (all store **names**, not
+  ids; defaults '' — orchestrator 2026-10-28: resolve by name at run time), `rc_tables_dropped` (one-shot marker).
 - Cron: `GlpiPlugin\Backupinfo\Cron`, task `Sync`, frequency `HOUR_TIMESTAMP`.
 
 - [ ] Write `tests/schema_test.php`: string checks on `install.php` that each table/column above is created
@@ -218,8 +219,14 @@ backupinfo always calls mode `hybrid_name` (name, then IP).
   the call when nothing changed. Dropdown entries: class `PluginFieldsDropdown::getClassname($systemName)` =
   `PluginFields<fieldname>Dropdown`; find by `name`, `add(['name'=>…, 'entities_id'=>0, 'is_recursive'=>1])` if absent.
   Check that "Backup Media - Content" is really a dropdown (`glpi_plugin_fields_fields.type`) and handle `text` too.
-- [ ] Tests: `available()` false when the plugin is inactive or config empty (Review Focus 5); a write with unchanged
-  values does nothing (fake reader). → FAIL → implement → PASS. Commit.
+- [ ] Rules (orchestrator, 2026-10-28): resolve container and fields **by name at run time** on every sync (ids are
+  never stored); if the container or a field is missing or inactive, skip that write and log one warning per run
+  (`Toolbox::logInFile('backupinfo', …)`) plus show it in Setup; **never create containers or fields** (creating a
+  value entry inside an existing dropdown field is allowed); write only when the value changed, so an asset gets
+  history only on a real change, never hourly.
+- [ ] Tests: `available()` false when the plugin is inactive or config empty (Review Focus 5); a missing or inactive
+  field → skipped with a warning, no write, no create; a write with unchanged values does nothing (fake reader). →
+  FAIL → implement → PASS. Commit.
 
 ### Task 10: Sync service and cron
 
@@ -260,7 +267,7 @@ backup). Delete `front/{dashboard,jobs,report,storage,assets}.php`. Test `tests/
 
 - [ ] Tests (source-string checks, OpManager style): tab registered on Computer; every front controller calls
   `Session::checkRight` with the right constant; Sync now checks config UPDATE and CSRF; deleted pages absent from
-  `Menu.php`; search options IDs in the plugin range claimed (use 8370–8379; tell the reviewer if they collide). →
+  `Menu.php`; search options IDs in 8370–8379 (confirmed free by the orchestrator, 2026-10-28). →
   FAIL → implement → PASS. Commit.
 
 ### Task 13: Build

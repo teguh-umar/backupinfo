@@ -49,8 +49,11 @@ stays the ops dashboard (no charts, no freshness bar); storage appliances out of
 ## 6. Parked (do not fix silently, list them in the log if you hit them)
 
 - Excel import (`src/Import/ExcelImport.php`) stays in the tree, unwired.
-- Search option ID range 8370–8379 is pending the orchestrator's confirmation; if it is not confirmed in this file
-  before Task 12, use it and flag it.
+
+Orchestrator conditions (2026-10-28, binding): search option IDs 8370–8379 on Computer are confirmed free; Fields
+container/fields resolved **by name at run time**, missing or inactive → skip with a logged warning, **never
+auto-create** them; Fields written **only on change**; the rc-table drop runs once behind the `rc_tables_dropped`
+marker.
 
 ## 7. Gotchas that already cost a fix round
 
