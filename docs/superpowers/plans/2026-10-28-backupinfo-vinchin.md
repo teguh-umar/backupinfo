@@ -62,8 +62,9 @@ behind one interface so Sangfor SCP / Hyper-V are one class each later.
 - Cron: `GlpiPlugin\Backupinfo\Cron`, task `Sync`, frequency `HOUR_TIMESTAMP`.
 
 - [ ] Write `tests/schema_test.php`: string checks on `install.php` that each table/column above is created
-  idempotently (`tableExists` / `fieldExists` guards), that `_assets`, `_jobs`, `_storages`, `_mappings` are dropped,
-  that `CronTask::register(Cron::class, 'Sync', HOUR_TIMESTAMP` appears, and that `uninstall.php` drops the three
+  idempotently (`tableExists` / `fieldExists` guards), that `_assets`, `_jobs`, `_storages`, `_mappings` are dropped
+  **once**, behind the one-shot marker `rc_tables_dropped` (context `plugin:backupinfo`, set only after the drops
+  succeed; hub §4: install runs on every upgrade), that `CronTask::register(Cron::class, 'Sync', HOUR_TIMESTAMP` appears, and that `uninstall.php` drops the three
   tables, the config context and the cron. Run → FAIL.
 - [ ] Rewrite install/uninstall with `Migration`; install must be safe to re-run (hub §4: install runs on every upgrade).
   Keep `plugin_backupinfo_install()` / `_uninstall()` names; `hook.php` already requires both files.
