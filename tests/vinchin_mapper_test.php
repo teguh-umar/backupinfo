@@ -244,7 +244,7 @@ check('schedules: unreadable strategy stays unknown', array_key_exists('VM-B', $
 check('schedules: job list is GET /jobs', $t->calls[1]['method'] === 'GET' && str_contains($t->calls[1]['url'], '/api/v1/jobs?'));
 check('schedules: details only for jobs the objects name', count($t->calls) === 4
     && str_contains($t->calls[2]['url'], '/jobs/ua?') && str_contains($t->calls[3]['url'], '/jobs/ub?'));
-check('schedules: no errors', $src->scheduleErrors() === []);
+check('schedules: the unreadable one is reported, naming the job', count($src->scheduleErrors()) === 1 && str_contains($src->scheduleErrors()[0], 'JOB-B'));
 
 $t = new FakeT();
 $t->queue = [okr(['total' => 1, 'rows' => [['item_name' => 'VM-A', 'module_type_des' => 'Virtualization', 'last_time' => 1761600000, 'task_name' => 'J']]]), bad()];

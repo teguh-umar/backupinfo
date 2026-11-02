@@ -67,6 +67,17 @@ check('weekday mask, two days (Mon + Thu), weekly: 96 h', ScheduleMapper::interv
 check('weekday mask, empty: whole cycle', ScheduleMapper::intervalHours($d(['type' => 2, 'frequency' => 's2', 'days' => [0, 0, 0, 0, 0, 0, 0]])) === 336);
 check('frequency as plain string "3"', ScheduleMapper::intervalHours($d(['type' => 2, 'frequency' => '3', 'days' => [1, 0, 0, 0, 0, 0, 0]])) === 504);
 check('month-day mask (31 flags), days 1 and 15: 17 days', ScheduleMapper::intervalHours($d(['type' => 3, 'days' => array_replace(array_fill(0, 31, 0), [0 => 1, 14 => 1])])) === 408);
+// Only known frequency shapes (orchestrator 2026-11-02): int, "N", "s<N>"; anything else = unknown
+check('frequency "d3": unknown, not 3 weeks', ScheduleMapper::intervalHours($d(['type' => 2, 'frequency' => 'd3', 'days' => [0, 0, 0, 0, 1, 0, 0]])) === null);
+check('frequency "m1" / "" / "s" / "s2x": unknown', ScheduleMapper::intervalHours($d(['type' => 2, 'frequency' => 'm1'])) === null
+    && ScheduleMapper::intervalHours($d(['type' => 2, 'frequency' => ''])) === null
+    && ScheduleMapper::intervalHours($d(['type' => 2, 'frequency' => 's'])) === null
+    && ScheduleMapper::intervalHours($d(['type' => 2, 'frequency' => 's2x'])) === null);
+check('frequency "S2" (case) and missing frequency are known', ScheduleMapper::intervalHours($d(['type' => 2, 'frequency' => 'S2', 'days' => [1, 0, 0, 0, 0, 0, 0]])) === 336
+    && ScheduleMapper::intervalHours($d(['type' => 2, 'days' => [1, 0, 0, 0, 0, 0, 0]])) === 168);
+check('one unknown strategy makes the whole schedule unknown (it could be the shorter one)',
+    ScheduleMapper::intervalHours($d(['type' => 1], ['type' => 2, 'frequency' => 'x9'])) === null
+    && ScheduleMapper::intervalHours($d(['type' => 1], ['type' => 9])) === null);
 check('unknown type: null', ScheduleMapper::intervalHours($d(['type' => 9])) === null);
 check('no time_strategy: null', ScheduleMapper::intervalHours([]) === null && ScheduleMapper::intervalHours(['time_strategy' => 'x']) === null);
 check('frequency is capped (bad value cannot make a huge RPO)', ScheduleMapper::intervalHours($d(['type' => 2, 'frequency' => 999, 'days' => [1]])) === 168 * ScheduleMapper::MAX_WEEKS);

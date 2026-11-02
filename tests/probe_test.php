@@ -197,6 +197,17 @@ $t->queue = [ok(['total' => 0, 'rows' => []]), ok(['total' => 0, 'rows' => []]),
 $s = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => []))->probe(5);
 check('job schedules: refused job list is one error line, other endpoints kept', count($s['errors']) === 1 && !isset($s['raw']['/jobs']) && isset($s['raw']['/jobs/history']));
 
+// a schedule the plugin does not understand is reported, not guessed
+$t = new FakeT();
+$t->queue = [
+    ok(['total' => 0, 'rows' => []]),
+    ok(['total' => 0, 'rows' => []]),
+    ok(['total' => 1, 'rows' => [['job_name' => 'J9', 'job_uuid' => 'u9']]]),
+    ok(['time_strategy' => [['type' => 2, 'frequency' => 'd3', 'days' => [0, 0, 0, 0, 1, 0, 0]]]]),
+];
+$s = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => []))->probe(5);
+check('unknown schedule: one error line naming the job', count($s['errors']) === 1 && str_contains($s['errors'][0], 'J9') && str_contains($s['errors'][0], 'schedule not understood'));
+
 check('probe search is trimmed and capped', Probe::cleanSearch("  VM-A  ") === 'VM-A' && mb_strlen(Probe::cleanSearch(str_repeat('x', 300))) === 100);
 
 done();

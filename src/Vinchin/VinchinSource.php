@@ -143,7 +143,10 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
                 $data = is_array($data) ? $data : [];
                 $out['details'][] = ['job_uuid' => $uuid, 'job_name' => $name] + $data;
                 $hours = ScheduleMapper::intervalHours($data);
-                if ($hours !== null && $name !== '') {
+                if ($hours === null) {
+                    // Reported, never guessed: this job's objects use the global RPO.
+                    $out['errors'][] = sprintf('job %s: schedule not understood (time_strategy %s)', $name, json_encode($data['time_strategy'] ?? null));
+                } elseif ($name !== '') {
                     $out['byJob'][mb_strtolower($name)] = $hours;
                 }
             } catch (\RuntimeException $e) {

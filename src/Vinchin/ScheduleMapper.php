@@ -7,6 +7,8 @@ namespace GlpiPlugin\Backupinfo\Vinchin;
  * type 1 daily, 2 weekly (frequency = every N weeks, days = weekdays), 3 monthly (days = dates).
  * The interval is the longest gap between two scheduled runs; with several strategies (full
  * weekly + incremental daily) the shortest wins, since any backup refreshes the last backup.
+ * A strategy it does not understand makes the whole schedule unknown (null): it could be the
+ * shorter one, and a guess would silently give wrong verdicts.
  */
 final class ScheduleMapper
 {
@@ -23,9 +25,10 @@ final class ScheduleMapper
         $best = null;
         foreach ($strategies as $s) {
             $hours = is_array($s) ? self::strategyHours($s) : null;
-            if ($hours !== null && ($best === null || $hours < $best)) {
-                $best = $hours;
+            if ($hours === null) {
+                return null;
             }
+            $best = $best === null ? $hours : min($best, $hours);
         }
         return $best;
     }
@@ -65,7 +68,10 @@ final class ScheduleMapper
             case 1:
                 return 24;
             case 2:
-                $weeks = max(1, min(self::MAX_WEEKS, self::number($s['frequency'] ?? 1) ?? 1));
+                $weeks = self::weeks($s['frequency'] ?? 1);
+                if ($weeks === null) {
+                    return null;
+                }
                 $days  = self::mask($raw, 7) ?? array_map(static fn(int $d): int => $d % 7, self::days($raw));
                 return self::longestGap(array_values(array_unique($days)), 7 * $weeks) * 24;
             case 3:
@@ -77,13 +83,17 @@ final class ScheduleMapper
         }
     }
 
-    /** First whole number in 2, "2" or "s2"; null when there is none. */
-    private static function number(mixed $v): ?int
+    /**
+     * Weeks between runs from the known shapes only: 2, "2" or "s2" (seen on the VM for a
+     * two-week job). Any other shape ("d3", "m1", "") is null, never guessed (orchestrator
+     * 2026-11-02). Capped at MAX_WEEKS.
+     */
+    private static function weeks(mixed $v): ?int
     {
-        if (is_int($v)) {
-            return $v;
+        if (is_string($v) && preg_match('/^\s*s?(\d+)\s*$/i', $v, $m) === 1) {
+            $v = (int) $m[1];
         }
-        return is_string($v) && preg_match('/\d+/', $v, $m) === 1 ? (int) $m[0] : null;
+        return is_int($v) && $v >= 1 ? min(self::MAX_WEEKS, $v) : null;
     }
 
     /**
