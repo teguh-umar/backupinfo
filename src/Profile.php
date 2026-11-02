@@ -99,4 +99,34 @@ class Profile extends \Profile
             }
         }
     }
+
+    /**
+     * Pure: the config right a profile gets on the 0.2.0 upgrade, or null to leave it.
+     * Whoever could edit the config in rc2 (UPDATE) may now also add and delete connections.
+     */
+    public static function upgradedConfigRight(int $current): ?int
+    {
+        if (($current & UPDATE) === 0) {
+            return null;
+        }
+        $new = $current | CREATE | PURGE;
+        return $new === $current ? null : $new;
+    }
+
+    /** One-shot (install marker config_rights_v020): CREATE|PURGE for every config UPDATE holder. */
+    public static function grantCreatePurgeToEditors(): void
+    {
+        global $DB;
+
+        $rows = $DB->request([
+            'FROM'  => 'glpi_profilerights',
+            'WHERE' => ['name' => RightDefinition::CONFIG],
+        ]);
+        foreach ($rows as $row) {
+            $new = self::upgradedConfigRight((int) $row['rights']);
+            if ($new !== null) {
+                ProfileRight::updateProfileRights((int) $row['profiles_id'], [RightDefinition::CONFIG => $new]);
+            }
+        }
+    }
 }
