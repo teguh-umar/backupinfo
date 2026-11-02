@@ -28,6 +28,7 @@ $selected = (int) ($_POST['connections_id'] ?? 0);
 $search   = Probe::cleanSearch($_POST['search'] ?? '');
 
 Html::header(__('Probe', 'backupinfo'), '', \GlpiPlugin\Pgnsuite\Menu::SECTOR, 'backupinfo', 'probe');
+\GlpiPlugin\Pgnsuite\Menu::renderSubNav('backupinfo', 'probe');
 
 echo '<div class="card mb-3"><div class="card-body">';
 echo '<p>' . __s('Takes a small sample (one page per endpoint) from a connection and shows what the backup system returns, how the plugin reads it and which Computer it matches. Nothing is saved.', 'backupinfo') . '</p>';

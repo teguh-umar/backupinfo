@@ -131,7 +131,7 @@ foreach ($fronts as $file => $right) {
     check("{$file}: RightDefinition imported", str_contains($src, 'use GlpiPlugin\Backupinfo\RightDefinition;'));
     check("{$file}: no old 'plugins' sector", !str_contains($src, "'plugins', 'backupinfo'"));
 }
-foreach (['coverage.php' => 'coverage', 'objects.php' => 'objects'] as $file => $opt) {
+foreach (['coverage.php' => 'coverage', 'objects.php' => 'objects', 'probe.php' => 'probe'] as $file => $opt) {
     $src = $read('front/' . $file);
     check("{$file}: header in the shared sector + sub-nav", (bool) preg_match("/Html::header\\([^;]*Menu::SECTOR, 'backupinfo', '{$opt}'\\);\\s*\\\\GlpiPlugin\\\\Pgnsuite\\\\Menu::renderSubNav\\('backupinfo', '{$opt}'\\);/", $src));
     check("{$file}: footer", str_contains($src, 'Html::footer();'));
