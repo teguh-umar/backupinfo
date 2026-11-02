@@ -6,7 +6,7 @@ foreach ([
     'Source/BackupObject', 'Source/BackupSource', 'Source/ProbeableSource', 'Source/PartialFetch', 'Source/Registry',
     'Vinchin/Signer', 'Vinchin/Transport', 'Vinchin/CurlTransport', 'Vinchin/Client',
     'Vinchin/ItemMapper', 'Vinchin/JobHistoryMapper', 'Vinchin/ScheduleMapper', 'Vinchin/VinchinSource',
-    'Matching/AssetLookup', 'Matching/Matcher', 'Probe',
+    'Matching/AssetLookup', 'Matching/Matcher', 'Rpo', 'Probe',
 ] as $f) {
     require BI_ROOT . "/src/$f.php";
 }
@@ -207,6 +207,20 @@ $t->queue = [
 ];
 $s = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => []))->probe(5);
 check('unknown schedule: one error line naming the job', count($s['errors']) === 1 && str_contains($s['errors'][0], 'J9') && str_contains($s['errors'][0], 'schedule not understood'));
+
+// manual / one-time job: said so, global RPO on the row (orchestrator 2026-11-02)
+$t = new FakeT();
+$t->queue = [
+    ok(['total' => 1, 'rows' => [['item_name' => 'VM-M', 'module_type_des' => 'Virtualization', 'last_time' => 1761600000, 'task_name' => 'JM']]]),
+    ok(['total' => 0, 'rows' => []]),
+    ok(['total' => 1, 'rows' => [['job_name' => 'JM', 'job_uuid' => 'um']]]),
+    ok(['time_strategy_backup_type' => 'manual', 'time_strategy' => []]),
+];
+$s = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => []))->probe(5);
+check('manual job: line says manual and global RPO, not "not understood"', count($s['errors']) === 1
+    && str_contains($s['errors'][0], 'JM: manual job, no schedule (global RPO used)'));
+check('manual job: object schedule unknown, so the row label is "(global)"', isset($s['objects'][0]) && $s['objects'][0]->scheduleHours === null
+    && (new \GlpiPlugin\Backupinfo\Rpo(26, 24))->label(['schedule_hours' => $s['objects'][0]->scheduleHours]) === '26 h (global)');
 
 check('probe search is trimmed and capped', Probe::cleanSearch("  VM-A  ") === 'VM-A' && mb_strlen(Probe::cleanSearch(str_repeat('x', 300))) === 100);
 
