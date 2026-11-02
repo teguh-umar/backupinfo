@@ -271,10 +271,59 @@ backup). Delete `front/{dashboard,jobs,report,storage,assets}.php`. Test `tests/
   `Menu.php`; search options IDs in 8370–8379 (confirmed free by the orchestrator, 2026-10-28). →
   FAIL → implement → PASS. Commit.
 
-### Task 13: Build
+### Task 13: Upgrade grant for the new config rights
+
+Task 12 added CREATE and PURGE to `plugin_backupinfo_config` (connection add/delete). Profiles that already hold
+config UPDATE from rc2 must receive them on upgrade, or their admins lose add/delete (orchestrator, 2026-11-02).
+
+**Files:** Modify `install/install.php` (or `src/Profile.php` if the seeding lives there). Test `tests/schema_test.php`.
+
+- [ ] Tests (source-string, like the existing rc-drop checks): a block guarded by a one-shot marker
+  `config_rights_v020` in context `plugin:backupinfo` adds `CREATE | PURGE` to every profile whose current
+  `plugin_backupinfo_config` value has `UPDATE`, through `ProfileRight` (no raw SQL on `glpi_profilerights` unless it
+  is the core pattern), and sets the marker only after the loop; Super-Admin seeding unchanged. → FAIL → implement →
+  PASS. Commit `feat: grant CREATE/PURGE to config UPDATE holders on upgrade`.
+
+### Task 14: Probe page (read-only sample, any source type)
+
+User request (2026-11-02): before trusting a full sync, an admin pulls a small **sample** from a connection and sees
+the raw data, the plugin's mapping and the match result, from a page in the Backup Info menu. It must work for future
+source types (Sangfor SCP, Hyper-V), not only Vinchin.
+
+**Files:** Create `src/Source/ProbeableSource.php`, `src/Probe.php`, `front/probe.php`; modify
+`src/Vinchin/VinchinSource.php`, `src/Menu.php`. Test `tests/probe_test.php`, extend `tests/ui_wiring_test.php`.
+
+**Interfaces:**
+- `interface ProbeableSource { /** @return array{raw: array<string, list<array>>, objects: list<BackupObject>, errors: list<string>} */ public function probe(int $limit): array; }`
+  — `raw` keyed by endpoint label (Vinchin: `'/backup_data/items/list'`, `'/jobs/history'`), at most `$limit` rows
+  each, one page only (no paging loop); `objects` = the same rows through the source's mapper; an endpoint that fails
+  adds one line to `errors` (no secret) and the other endpoint still runs.
+- `VinchinSource implements BackupSource, ProbeableSource`. Job-history mapping in the probe uses the Computer-names
+  callable already injected.
+- `Probe::redact(array $row): array` — recursively replaces the value of any key matching
+  `/pass|secret|token|api[_-]?key|auth|cookie|session/i` with `'***'`.
+- `Probe::run(array $connectionRow, callable $decrypt, Matcher $m, int $limit = 5): array{raw, objects, matches, errors}`
+  — `matches` = `Matcher::match($o->name, $o->ip, 'hybrid_name')` per VM object; builds the source via
+  `Registry::create`; a source that is not `ProbeableSource` → `errors = ['This source type has no probe yet']`.
+  **Never writes**: no ObjectStore, no FieldsBridge, no connection `last_*` update.
+- `front/probe.php`: `Session::checkRight(RightDefinition::CONFIG, UPDATE)` (it uses stored credentials and calls the
+  backup system); GET shows a connection select (active and inactive) and a "Take sample" button; POST (CSRF is
+  checked centrally by GLPI 11) runs `Probe::run` with limit 5 and renders three blocks: raw rows as pretty JSON
+  after `Probe::redact` (`<pre>` with `htmlescape`), the mapped objects table (name, ip, kind, job, last backup as
+  date + age, restore points, size, flags), and match results (state + Computer link). Menu entry "Probe" under
+  Backup Info, visible only with config UPDATE.
+
+- [ ] Tests: redact masks nested keys and leaves others; `Probe::run` with a fake ProbeableSource returns raw/objects/
+  matches and calls no store/bridge (fakes throw if touched); a non-probeable fake source → the "no probe yet" error;
+  VinchinSource::probe with a fake Transport sends exactly one request per endpoint with `limit` 5 and `offset` 0, and
+  one failing endpoint still returns the other's rows plus one error line; ui_wiring: probe.php checks CONFIG UPDATE,
+  uses `Probe::redact` before output, menu entry gated by UPDATE. → FAIL → implement → PASS. Commit
+  `feat: read-only probe page`.
+
+### Task 15: Build
 
 **Files:** Create `tools/build_zip.py` (top folder `backupinfo/`; exclude `python/`, `docs/`, `tests/`, `tools/`,
-`graphify-out/`, `CLAUDE.local.md`, `.claude/`, `.git*`, `HANDOFF-opencode.md`, `*.pdf`, `*.xlsx`, `*.zip`); set
+`graphify-out/`, `CLAUDE.local.md`, `.claude/`, `.superpowers/`, `.git*`, `HANDOFF-opencode.md`, `*.pdf`, `*.xlsx`, `*.zip`); set
 version `0.2.0-rc1`; add `CHANGELOG.md`.
 
 - [ ] Build; list the zip; confirm none of the excluded paths and both shared-file SHAs (`46feaa6c…`, `4bff4a4b…`)

@@ -6,7 +6,8 @@ Owner: Claude session `backup-info-7c` (reviews everything you commit). Written 
 
 - Plugin repo: `PGN GLPI Suite/plugins/Backup Info/` (git, branch `main`, no remote; never add one, never push).
 - Spec: `docs/superpowers/specs/2026-10-28-backupinfo-vinchin-design.md` (approved by the user 2026-10-28).
-- Plan: `docs/superpowers/plans/2026-10-28-backupinfo-vinchin.md` (13 tasks). **Do the tasks in order.**
+- Plan: `docs/superpowers/plans/2026-10-28-backupinfo-vinchin.md` (15 tasks). **Tasks 1-12 are DONE (see §2).
+  You do Tasks 13, 14 and 15, in that order.**
 - Vinchin reference (read only, not shipped): `python/vinchin (1).py`, `python/vinchin-openapi.yaml`,
   `python/integrations (1).py`. `python/vinchin.py` and `python/integrations.py` are empty; ignore them.
 - Patterns to copy: `../OPmanager GLPI Plugin/` (tests harness, `src/Matching/`, `src/Config.php` secrets,
@@ -19,8 +20,18 @@ Owner: Claude session `backup-info-7c` (reviews everything you commit). Written 
 
 ## 2. Current state
 
-- First commit = 0.1.0-rc2 (deployed on the VM; settings section and Connections page confirmed by the user).
-- rc2 still has: plain-text secrets, an unsigned Vinchin client (Vinchin rejects it), rc1 pages that the spec drops.
+- Work on branch **`feat/v0.2-vinchin`** (not `main`). `main` = 0.1.0-rc2 (deployed on the VM).
+- Tasks 1-12 were implemented by Claude sub-agents (2026-10-28..11-02, while rule 10 was suspended) and each passed a
+  task review: commits `c32bc7d..a6c7885`. Offline suite: 511 PASS, 0 FAIL.
+- Read before starting: the existing code under `src/` (Source, Vinchin, Matching, Fields, Sync, Policy, UI classes)
+  and `tests/` — follow their style. Exact interfaces are in the plan's Task 1-12 blocks; the code is authoritative
+  where they differ.
+- **Test command** (local PHP has no php.ini):
+  `php -d extension_dir="C:/Users/<user>/Downloads/php/ext" -d extension=openssl -d extension=curl tests/run_all.php`
+  → last line `SUITES OK` (each suite prints `ALL PASS`).
+- Orchestrator rulings since the plan was written: AssetTab section order is **100**; search options 8370-8372 are
+  registered via `plugin_backupinfo_getAddSearchOptionsNew()` in `hook.php`; `plugin_backupinfo_config` now offers
+  READ|UPDATE|CREATE|PURGE (Task 13 grants the new bits on upgrade).
 
 ## 3. Verify first
 
@@ -37,8 +48,11 @@ Owner: Claude session `backup-info-7c` (reviews everything you commit). Written 
 - Entity rule: user-facing lists use `getEntitiesRestrictCriteria`; cron sees all entities.
 - Install must be safe to run again (it runs on every upgrade).
 - Do not touch `python/`, `*.pdf`, `graphify-out/`, `CLAUDE.local.md`, `.claude/`.
-- Do not write manuals or `docs/manual/` (Copilot's job). `CHANGELOG.md` is fine (Task 13).
-- Do not deploy, and do not build a zip before Task 13.
+- Do not write manuals or `docs/manual/` (Copilot's job). `CHANGELOG.md` is fine (Task 15).
+- Do not deploy, and do not build a zip before Task 15. The zip also excludes `.superpowers/`; check the SHA-256 of
+  **all four** shared files inside the zip (`lib/pgnsuite/{AssetTab,ConfigTab,Menu}.php`, `front/pgnsuite.settings.php`)
+  against `../../shared/pgnsuite/`.
+- The probe page (Task 14) must never write anything and never print a secret; redact before output.
 
 ## 5. Decisions not to re-litigate
 
@@ -72,7 +86,7 @@ marker.
 
 ## 8. When done (or blocked)
 
-Update **§9 Progress log** after **every** task, then stop at the end of Task 13 (or at the first blocker) and tell
+Update **§9 Progress log** after **every** task, then stop at the end of Task 15 (or at the first blocker) and tell
 the user "handoff updated". The owner reviews from this file: commits, tests output, deviations.
 
 ## 9. Progress log (OpenCode fills this in)
@@ -82,4 +96,7 @@ plan and why · anything unverified · questions for the owner.
 
 | Task | Commit | Tests | Deviations / notes | Questions |
 |---|---|---|---|---|
-| 1 | | | | |
+| 1-12 | c32bc7d..a6c7885 | SUITES OK (511 pass) | done by Claude sub-agents, reviewed | — |
+| 13 | | | | |
+| 14 | | | | |
+| 15 | | | | |
