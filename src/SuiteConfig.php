@@ -200,15 +200,18 @@ class SuiteConfig
         }
     }
 
-    /** Connections summary with a link to the list (the connection forms stay where they are). */
+    /** Connections: list, add and edit, all inside this section (the form posts to front/connection.form.php). */
     private static function connections(): void
     {
         global $DB;
 
         $types = Registry::types();
         echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __s('Connections', 'backupinfo') . '</h3>';
-        echo '<div class="card-actions"><a class="btn btn-sm btn-outline-secondary" href="' . htmlescape(Connection::getSearchURL()) . '"><i class="ti ti-plug-connected me-1"></i>'
-            . __s('Manage connections', 'backupinfo') . '</a></div></div>';
+        if (Session::haveRight(RightDefinition::CONFIG, CREATE)) {
+            echo '<div class="card-actions"><a class="btn btn-sm btn-outline-secondary" href="' . htmlescape(self::connectionLink(0)) . '"><i class="ti ti-plus me-1"></i>'
+                . __s('Add a connection', 'backupinfo') . '</a></div>';
+        }
+        echo '</div>';
         echo '<div class="card-body p-0"><table class="tab_cadre_fixehov"><tr class="noHover">'
             . '<th>' . __s('Name') . '</th><th>' . __s('Type') . '</th><th>' . __s('Active') . '</th>'
             . '<th>' . __s('Last sync', 'backupinfo') . '</th><th>' . __s('Result', 'backupinfo') . '</th></tr>';
@@ -218,7 +221,7 @@ class SuiteConfig
             $status = (string) ($c['last_status'] ?? '');
             $result = $status === '' ? '' : ($status === 'ok' ? __('OK') : $status . ': ' . (string) ($c['last_error'] ?? ''));
             echo '<tr class="tab_bg_1">'
-                . '<td><a href="' . htmlescape(Connection::getFormURLWithID((int) $c['id'])) . '">' . htmlescape((string) $c['name']) . '</a></td>'
+                . '<td><a href="' . htmlescape(self::connectionLink((int) $c['id'])) . '">' . htmlescape((string) $c['name']) . '</a></td>'
                 . '<td>' . htmlescape($types[(string) $c['type']] ?? (string) $c['type']) . '</td>'
                 . '<td>' . (!empty($c['is_active']) ? __s('Yes') : __s('No')) . '</td>'
                 . '<td>' . htmlescape(!empty($c['last_sync']) ? Html::convDateTime((string) $c['last_sync']) : __('never', 'backupinfo')) . '</td>'
@@ -229,6 +232,45 @@ class SuiteConfig
             echo '<tr class="tab_bg_1"><td colspan="5">' . __s('No connection yet.', 'backupinfo') . '</td></tr>';
         }
         echo '</table></div></div>';
+
+        // The connection form lives here, in Setup (user, 2026-11-02); it posts to
+        // front/connection.form.php, which returns to this section.
+        $requested = $_GET[self::CONNECTION_PARAM] ?? null;
+        if ($requested !== null && is_numeric($requested)) {
+            $id   = (int) $requested;
+            $conn = new Connection();
+            $ok   = $id > 0 ? $conn->can($id, READ) : Session::haveRight(RightDefinition::CONFIG, CREATE);
+            if ($ok) {
+                echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">'
+                    . ($id > 0 ? __s('Edit connection', 'backupinfo') : __s('New connection', 'backupinfo')) . '</h3>'
+                    . '<div class="card-actions"><a class="btn btn-sm btn-ghost-secondary" href="' . htmlescape(self::connectionLink(null)) . '">'
+                    . __s('Close') . '</a></div></div><div class="card-body">';
+                $conn->showForm($id);
+                echo '</div></div>';
+            }
+        }
+    }
+
+    public const CONNECTION_PARAM = 'bi_connection';
+
+    /**
+     * Pure: link to this section on the settings page, with the connection form open for $id
+     * (0 = new) or closed (null). Relative to the settings page, which is where it is used.
+     */
+    public static function connectionLink(?int $id): string
+    {
+        $query = ['section' => self::SECTION];
+        if ($id !== null) {
+            $query[self::CONNECTION_PARAM] = max(0, $id);
+        }
+        return '?' . http_build_query($query);
+    }
+
+    /** Absolute URL of this section on the settings page (for redirects from front/ controllers). */
+    public static function sectionUrl(?int $connectionId = null): string
+    {
+        $base = \GlpiPlugin\Pgnsuite\ConfigTab::getReturnUrl(self::SECTION);
+        return $base . (str_contains($base, '?') ? '&' : '?') . substr(self::connectionLink($connectionId), 1);
     }
 
     /** @return list<int> */

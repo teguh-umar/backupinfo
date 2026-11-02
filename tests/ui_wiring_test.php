@@ -71,7 +71,14 @@ check('no options on other itemtypes', SearchOptions::forItemtype('Monitor') ===
 // ---- Setup section ----
 $sc = $read('src/SuiteConfig.php');
 check('section posts to front/config.php', str_contains($sc, "/plugins/backupinfo/front/config.php"));
-check('section links to connections', str_contains($sc, 'Connection::getSearchURL()'));
+check('section lists connections with in-section edit links', str_contains($sc, "self::connectionLink((int) \$c['id'])"));
+check('section "Add a connection" only with CREATE', (bool) preg_match('/haveRight\(RightDefinition::CONFIG, CREATE\)\) \{\s*echo [^;]*self::connectionLink\(0\)/', $sc));
+check('section shows the connection form in place', str_contains($sc, '$conn->showForm($id);'));
+check('in-section form: existing id needs READ on it, new needs CREATE',
+    str_contains($sc, '$ok   = $id > 0 ? $conn->can($id, READ) : Session::haveRight(RightDefinition::CONFIG, CREATE);'));
+check('connectionLink: open form', \GlpiPlugin\Backupinfo\SuiteConfig::connectionLink(5) === '?section=backupinfo&bi_connection=5');
+check('connectionLink: new form', \GlpiPlugin\Backupinfo\SuiteConfig::connectionLink(0) === '?section=backupinfo&bi_connection=0');
+check('connectionLink: closed', \GlpiPlugin\Backupinfo\SuiteConfig::connectionLink(null) === '?section=backupinfo');
 check('section shows FieldsBridge problems', str_contains($sc, '->problems()') && str_contains($sc, '->available()'));
 check('section offers containers and fields by name', str_contains($sc, '->containerOptions()') && str_contains($sc, '->fields('));
 check('section has the manual policy picker', str_contains($sc, "'manual_ids[]'") && str_contains($sc, "'multiple'"));
@@ -124,7 +131,7 @@ foreach ($fronts as $file => $right) {
     check("{$file}: RightDefinition imported", str_contains($src, 'use GlpiPlugin\Backupinfo\RightDefinition;'));
     check("{$file}: no old 'plugins' sector", !str_contains($src, "'plugins', 'backupinfo'"));
 }
-foreach (['coverage.php' => 'coverage', 'objects.php' => 'objects', 'connection.php' => 'connection'] as $file => $opt) {
+foreach (['coverage.php' => 'coverage', 'objects.php' => 'objects'] as $file => $opt) {
     $src = $read('front/' . $file);
     check("{$file}: header in the shared sector + sub-nav", (bool) preg_match("/Html::header\\([^;]*Menu::SECTOR, 'backupinfo', '{$opt}'\\);\\s*\\\\GlpiPlugin\\\\Pgnsuite\\\\Menu::renderSubNav\\('backupinfo', '{$opt}'\\);/", $src));
     check("{$file}: footer", str_contains($src, 'Html::footer();'));
@@ -183,12 +190,15 @@ check('seed via updateProfileRights (idempotent)', str_contains($prof, 'ProfileR
 check('install calls Profile::install on every run', str_contains($read('install/install.php'), 'Profile::install();'));
 $cf = $read('front/connection.form.php');
 check('connection add: check CREATE', (bool) preg_match('/isset\(\$_POST\[\'add\'\]\)\) \{\s*\$connection->check\(-1, CREATE, \$_POST\);/', $cf));
-check('connection add: redirect to the new form', str_contains($cf, 'Connection::getFormURLWithID($new)'));
+check('connection add: back to the section with the new form open', str_contains($cf, 'Html::redirect(SuiteConfig::sectionUrl($new ? (int) $new : 0));'));
+check('connection update: back to the section', str_contains($cf, 'Html::redirect(SuiteConfig::sectionUrl($id));'));
 check('connection update: check UPDATE', (bool) preg_match('/isset\(\$_POST\[\'update\'\]\)\) \{\s*\$connection->check\(\$id, UPDATE\);/', $cf));
-check('connection purge (delete alias): check PURGE', (bool) preg_match('/isset\(\$_POST\[\'purge\'\]\) \|\| isset\(\$_POST\[\'delete\'\]\)\) \{\s*\$connection->check\(\$id, PURGE\);\s*\$connection->delete\(\[\'id\' => \$id\], true\);\s*Html::redirect\(Connection::getSearchURL\(\)\);/', $cf));
+check('connection purge (delete alias): check PURGE', (bool) preg_match('/isset\(\$_POST\[\'purge\'\]\) \|\| isset\(\$_POST\[\'delete\'\]\)\) \{\s*\$connection->check\(\$id, PURGE\);\s*\$connection->delete\(\[\'id\' => \$id\], true\);\s*Html::redirect\(SuiteConfig::sectionUrl\(\)\);/', $cf));
 check('connections table has no trash (delete alias is safe)', !preg_match('/glpi_plugin_backupinfo_connections`[^;]*is_deleted/s', $read('install/install.php')));
-check('connection form page for id 0 (+ Add)', str_contains($cf, 'Connection::displayFullPageForItem($id, $menus, []);'));
-check('Menu: + Add link only with CREATE', (bool) preg_match("/haveRight\(RightDefinition::CONFIG, CREATE\)\) \{[^}]*'add' => '\/plugins\/backupinfo\/front\/connection\.form\.php'/", $read('src/Menu.php')));
+check('connection.form.php GET forwards to the section', str_contains($cf, "Html::redirect(SuiteConfig::sectionUrl($id));
+") && !str_contains($cf, 'displayFullPageForItem'));
+check('connection.php forwards to the section', str_contains($read('front/connection.php'), 'Html::redirect(SuiteConfig::sectionUrl());'));
+check('Menu: no connection entry (connections live in Setup)', !str_contains($read('src/Menu.php'), "\$options['connection']") && !str_contains($read('src/Menu.php'), 'front/connection'));
 
 // ---- Menu ----
 $menu = $read('src/Menu.php');
@@ -196,11 +206,12 @@ foreach (['dashboard', 'jobs', 'report', 'storage', 'assets'] as $gone) {
     check("Menu: no {$gone} page", !str_contains($menu, "front/{$gone}.php"));
     check("front/{$gone}.php deleted", !file_exists(BI_ROOT . "/front/{$gone}.php"));
 }
-check('Menu: coverage, objects, connection entries', str_contains($menu, "front/coverage.php") && str_contains($menu, "front/objects.php") && str_contains($menu, "front/connection.php"));
-check('Menu: options keyed coverage/objects/connection', str_contains($menu, "\$options['coverage']") && str_contains($menu, "\$options['objects']") && str_contains($menu, "\$options['connection']"));
+check('Menu: coverage, objects, probe entries', str_contains($menu, "front/coverage.php") && str_contains($menu, "front/objects.php") && str_contains($menu, "front/probe.php"));
+check('Menu: options keyed coverage/objects/probe', str_contains($menu, "\$options['coverage']") && str_contains($menu, "\$options['objects']") && str_contains($menu, "\$options['probe']"));
 check('Menu: each option behind its right', str_contains($menu, 'Session::haveRight(RightDefinition::REPORT, READ)')
     && str_contains($menu, 'Session::haveRight(RightDefinition::VIEW, READ)')
-    && str_contains($menu, 'Session::haveRight(RightDefinition::CONFIG, READ)'));
+    && str_contains($menu, 'Session::haveRight(RightDefinition::CONFIG, UPDATE)'));
+check('objects filter is a bordered button group, not nav-pills', str_contains($obj, '<div class="btn-group mb-3" role="group"') && !str_contains($obj, '<ul class="nav nav-pills'));
 check('src/Api removed', !is_dir(BI_ROOT . '/src/Api'));
 
 done();

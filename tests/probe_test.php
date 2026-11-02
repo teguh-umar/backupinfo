@@ -122,6 +122,8 @@ check('vinchin probe: items is POST with offset 0, limit 5',
 check('vinchin probe: history is GET with offset 0, limit 5',
     $t->calls[1]['method'] === 'GET' && str_contains($t->calls[1]['url'], '/jobs/history')
     && str_contains($t->calls[1]['url'], 'offset=0') && str_contains($t->calls[1]['url'], 'limit=5'));
+check('vinchin probe: history sorted newest first (sort=start_time, order=desc)',
+    str_contains($t->calls[1]['url'], 'sort=start_time') && str_contains($t->calls[1]['url'], 'order=desc'));
 check('vinchin probe: raw keyed by endpoint', isset($s['raw']['/backup_data/items/list'], $s['raw']['/jobs/history']));
 check('vinchin probe: items mapped (name/ip split)', ($s['objects'][0]->name ?? '') === 'VM-A' && ($s['objects'][0]->ip ?? '') === '10.0.0.1');
 check('vinchin probe: no errors', $s['errors'] === []);
@@ -146,5 +148,16 @@ check('probe page writes nothing', !preg_match('/->(add|update|delete)\(|setConf
 $menu = (string) file_get_contents(BI_ROOT . '/src/Menu.php');
 check('menu has a probe entry gated by config UPDATE',
     (bool) preg_match("/haveRight\(RightDefinition::CONFIG, UPDATE\)\) \{\s*\\\$options\['probe'\]/", $menu));
+
+// history refuses sort: one retry without it, still a sample
+$t = new FakeT();
+$t->queue = [
+    ok(['total' => 0, 'rows' => []]),
+    ko(),
+    ok(['total' => 1, 'rows' => [['job_name' => 'DAILY_VM-A', 'job_type' => 'Backup', 'job_status' => 'Completed', 'start_time' => '2026-11-02 01:00:00']]]),
+];
+$s = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => ['VM-A']))->probe(5);
+check('vinchin probe: history retried without sort when refused', count($t->calls) === 3
+    && !str_contains($t->calls[2]['url'], 'sort=') && isset($s['raw']['/jobs/history']) && $s['errors'] === []);
 
 done();

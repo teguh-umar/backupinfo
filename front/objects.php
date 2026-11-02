@@ -124,11 +124,16 @@ Html::header(__('Backup objects', 'backupinfo'), '', \GlpiPlugin\Pgnsuite\Menu::
 \GlpiPlugin\Pgnsuite\Menu::renderSubNav('backupinfo', 'objects');
 
 $page = Html::getPrefixedUrl('/plugins/backupinfo/front/objects.php');
-echo '<ul class="nav nav-pills mb-3">';
+// Bordered button group, not .nav-pills: pills have no borders and their active tint is
+// unreadable on GLPI's default palette (same finding as the shared ConfigTab sub-nav).
+echo '<div class="btn-group mb-3" role="group" aria-label="' . __s('Filter', 'backupinfo') . '">';
 foreach ($states as $key => [$label]) {
-    echo '<li class="nav-item"><a class="nav-link' . ($key === $state ? ' active' : '') . '" href="' . htmlescape($page . '?state=' . $key) . '">' . htmlescape($label) . '</a></li>';
+    $active = $key === $state;
+    echo '<a class="btn btn-outline-secondary' . ($active ? ' active' : '') . '"'
+        . ($active ? ' aria-current="page"' : '')
+        . ' href="' . htmlescape($page . '?state=' . $key) . '">' . htmlescape($label) . '</a>';
 }
-echo '</ul>';
+echo '</div>';
 if (!$canConfig) {
     echo '<div class="text-muted mb-2">' . __s('Objects without a computer are shown only to Backup Info administrators.', 'backupinfo') . '</div>';
 }

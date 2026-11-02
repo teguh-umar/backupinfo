@@ -209,4 +209,12 @@ $src = new VinchinSource(new Client('h', $t, 'K'), false, fn() => ['VM-Q']);
 $src->fetch();
 check('history fallback marks the fetch partial', $src->lastFetchWasPartial() === true);
 
+// VM sample 2026-11-02: Vinchin sends "ip": "--" when it has no address
+$r = ItemMapper::map([['item_name' => 'VM-TEST-02', 'module_type_des' => 'Virtualization', 'ip' => '--', 'last_time' => '2026-10-23 00:06:06']]);
+check('ip "--" is treated as empty', $r[0]->ip === '');
+$r = ItemMapper::map([['item_name' => 'x', 'item_uuid' => 'u1', 'module_type_des' => 'Database', 'ip' => ' - ']]);
+check('ip "-" is treated as empty (non-VM too)', $r[0]->ip === '');
+$r = ItemMapper::map([['item_name' => 'VM-B', 'module_type_des' => 'Virtualization', 'ip' => '10.0.0.9']]);
+check('a real ip is kept', $r[0]->ip === '10.0.0.9');
+
 done();

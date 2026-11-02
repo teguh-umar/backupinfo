@@ -31,7 +31,7 @@ final class ItemMapper
                     continue;
                 }
                 if ($ip === '') {
-                    $ip = self::s($row['ip'] ?? '');
+                    $ip = self::ip($row['ip'] ?? '');
                 }
                 $time = self::parseTime($row['last_time'] ?? null);
                 $key = strtolower($name);
@@ -68,7 +68,7 @@ final class ItemMapper
             }
             [$base, $ip] = self::splitName($raw);
             if ($ip === '') {
-                $ip = self::s($row['ip'] ?? '');
+                $ip = self::ip($row['ip'] ?? '');
             }
             $where = self::s($row['instance_name'] ?? '');
             $others[] = new BackupObject(
@@ -168,6 +168,13 @@ final class ItemMapper
             return in_array(strtolower(trim($v)), ['1', 'true', 'yes'], true);
         }
         return (bool) $v;
+    }
+
+    /** Vinchin's "no address" placeholders ("--", "-", "N/A") are not an IP. */
+    private static function ip(mixed $v): string
+    {
+        $ip = self::s($v);
+        return preg_match('~^(-+|n/?a|none)$~i', $ip) === 1 ? '' : $ip;
     }
 
     private static function s(mixed $v): string

@@ -102,8 +102,16 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
             $out['errors'][] = $e->getMessage();
         }
 
+        // Newest first, as the fetch() fallback asks; without sort Vinchin returns the oldest
+        // rows (VM sample 2026-11-02). Some versions refuse sort: retry once without it.
+        $params = ['search' => '', 'sort' => 'start_time', 'order' => 'desc'];
         try {
-            $rows = $this->client->getPaged(self::HISTORY_PATH, ['search' => '', 'order' => 'desc'], $limit, $limit, $firstPageOnly);
+            try {
+                $rows = $this->client->getPaged(self::HISTORY_PATH, $params, $limit, $limit, $firstPageOnly);
+            } catch (\RuntimeException) {
+                unset($params['sort']);
+                $rows = $this->client->getPaged(self::HISTORY_PATH, $params, $limit, $limit, $firstPageOnly);
+            }
             $out['raw'][self::HISTORY_PATH] = $rows;
             array_push($out['objects'], ...JobHistoryMapper::map($rows, array_values(($this->vmNames)()), time()));
         } catch (\RuntimeException $e) {

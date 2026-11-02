@@ -6,7 +6,7 @@ use Session;
 
 class Menu
 {
-    /** Entry in the shared Tools ICT menu: Coverage, Objects, Connections, each behind its right. */
+    /** Entry in the shared Tools ICT menu: Coverage, Objects, Probe, each behind its right. */
     public static function entry(): ?array
     {
         $options = [];
@@ -24,18 +24,8 @@ class Menu
                 'icon'  => 'ti ti-list-search',
             ];
         }
-        if (Session::haveRight(RightDefinition::CONFIG, READ)) {
-            $options['connection'] = [
-                'title' => __('Connections', 'backupinfo'),
-                'page'  => '/plugins/backupinfo/front/connection.php',
-                'icon'  => 'ti ti-plug-connected',
-                'lists_itemtype' => Connection::class,
-            ];
-            if (Session::haveRight(RightDefinition::CONFIG, CREATE)) {
-                // "+ Add" in the page header (id 0 form).
-                $options['connection']['links'] = ['add' => '/plugins/backupinfo/front/connection.form.php'];
-            }
-        }
+        // Connections are not here: they are set in Setup, Backup Info's section of the PGN
+        // Suite settings page (user, 2026-11-02).
         if (Session::haveRight(RightDefinition::CONFIG, UPDATE)) {
             $options['probe'] = [
                 'title' => __('Probe', 'backupinfo'),
