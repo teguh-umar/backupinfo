@@ -1,6 +1,12 @@
 # Changelog — Backup Info (backupinfo)
 
-## 0.2.0-rc3 — 2026-11-02 (release candidate, not yet confirmed on VM-GLPI)
+## 0.2.0-rc4 — 2026-11-02 (release candidate)
+
+- Probe page: optional **Search** (VM or job name). Vinchin's `search` is sent to both endpoints,
+  so the newest runs of one job, with their status, can be checked with API access only
+  (no Vinchin console needed). Needed to settle the RPO for WEEKLY jobs.
+
+## 0.2.0-rc3 — 2026-11-02 (user: Setup placement and filter OK on the VM)
 
 From the first Probe run on the VM (rc2):
 - **Connections are managed in Setup**: list, add, edit and delete inside Backup Info's section
