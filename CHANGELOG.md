@@ -1,5 +1,22 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.2.0-rc6 — 2026-11-02 (release candidate)
+
+- **RPO per backup object from the job's real schedule.** Job names do not follow the schedule
+  (a "(WEEKLY)" job runs every two weeks), so the sync reads each job's `time_strategy` from
+  Vinchin (`GET /jobs`, then `GET /jobs/{ID}` for the jobs the objects name): daily 24 h,
+  every N weeks, weekdays, month days; the longest gap between runs is the interval, and with
+  several strategies (full weekly + incremental daily) the shortest wins.
+- A backup is **expired** when older than *schedule + grace*. Grace is set in Setup
+  (default 24 h, 0–168). The existing RPO (default 26 h) applies only when a job's schedule
+  is unknown.
+- Asset tab and Probe show the RPO per row and where it came from:
+  `360 h (schedule 336 h + 24 h)` or `26 h (global)`. Coverage states the rule.
+- A schedule that cannot be read never fails the sync: that object uses the global RPO, and
+  the sync log says how many schedules were not read.
+- Fields "Backup Status" is unchanged (Yes for protected and expired).
+- Upgrade: new column `objects.schedule_hours` (NULL = unknown), new setting `rpo_grace_hours`.
+
 ## 0.2.0-rc5 — 2026-11-02 (release candidate)
 
 - Probe page: Backup Info sub-nav (Coverage, Backup objects, Probe) now shows on the Probe page
