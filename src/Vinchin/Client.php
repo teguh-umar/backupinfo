@@ -56,6 +56,12 @@ final class Client
         return $this->paged('GET', $path, $params, $page, $max, $stop);
     }
 
+    /** One GET returning the response's data (e.g. a single job's details). */
+    public function get(string $path, array $params = []): mixed
+    {
+        return $this->call('GET', $path, $params);
+    }
+
     private function paged(string $method, string $path, array $params, int $page, int $max, ?callable $stop): array
     {
         $rows = [];

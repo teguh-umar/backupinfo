@@ -195,8 +195,7 @@ check('connection update: back to the section', str_contains($cf, 'Html::redirec
 check('connection update: check UPDATE', (bool) preg_match('/isset\(\$_POST\[\'update\'\]\)\) \{\s*\$connection->check\(\$id, UPDATE\);/', $cf));
 check('connection purge (delete alias): check PURGE', (bool) preg_match('/isset\(\$_POST\[\'purge\'\]\) \|\| isset\(\$_POST\[\'delete\'\]\)\) \{\s*\$connection->check\(\$id, PURGE\);\s*\$connection->delete\(\[\'id\' => \$id\], true\);\s*Html::redirect\(SuiteConfig::sectionUrl\(\)\);/', $cf));
 check('connections table has no trash (delete alias is safe)', !preg_match('/glpi_plugin_backupinfo_connections`[^;]*is_deleted/s', $read('install/install.php')));
-check('connection.form.php GET forwards to the section', str_contains($cf, "Html::redirect(SuiteConfig::sectionUrl($id));
-") && !str_contains($cf, 'displayFullPageForItem'));
+check('connection.form.php GET forwards to the section', str_ends_with(rtrim($cf), 'Html::redirect(SuiteConfig::sectionUrl($id));') && !str_contains($cf, 'displayFullPageForItem'));
 check('connection.php forwards to the section', str_contains($read('front/connection.php'), 'Html::redirect(SuiteConfig::sectionUrl());'));
 check('Menu: no connection entry (connections live in Setup)', !str_contains($read('src/Menu.php'), "\$options['connection']") && !str_contains($read('src/Menu.php'), 'front/connection'));
 

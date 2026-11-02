@@ -13,6 +13,7 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
 
     private const ITEMS_PATH   = '/backup_data/items/list';
     private const HISTORY_PATH = '/jobs/history';
+    private const JOBS_PATH    = '/jobs';
 
     /** Body of the console's Backup Object menu with no filter (vinchin-openapi.yaml). */
     private const ITEMS_FILTER = [
@@ -114,6 +115,30 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
             }
             $out['raw'][self::HISTORY_PATH] = $rows;
             array_push($out['objects'], ...JobHistoryMapper::map($rows, array_values(($this->vmNames)()), time()));
+        } catch (\RuntimeException $e) {
+            $out['errors'][] = $e->getMessage();
+        }
+
+        // Job schedules: the job list, then one detail call per job for its time_strategy
+        // (type 1 daily, 2 weekly, 3 monthly; frequency; days) and next_time. Job names do not
+        // follow the real schedule (user, 2026-11-02), so an RPO per job would read this.
+        try {
+            $jobs = $this->client->getPaged(self::JOBS_PATH, ['search' => $search], $limit, $limit, $firstPageOnly);
+            $out['raw'][self::JOBS_PATH] = $jobs;
+            $details = [];
+            foreach ($jobs as $job) {
+                $uuid = is_array($job) ? (string) ($job['job_uuid'] ?? '') : '';
+                if ($uuid === '') {
+                    continue;
+                }
+                try {
+                    $data = $this->client->get(self::JOBS_PATH . '/' . rawurlencode($uuid));
+                    $details[] = ['job_uuid' => $uuid, 'job_name' => (string) ($job['job_name'] ?? '')] + (is_array($data) ? $data : []);
+                } catch (\RuntimeException $e) {
+                    $out['errors'][] = $e->getMessage();
+                }
+            }
+            $out['raw'][self::JOBS_PATH . '/{ID}'] = $details;
         } catch (\RuntimeException $e) {
             $out['errors'][] = $e->getMessage();
         }

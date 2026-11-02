@@ -112,9 +112,10 @@ $t = new FakeT();
 $t->queue = [
     ok(['total' => 500, 'rows' => [['item_name' => 'VM-A(10.0.0.1)', 'module_type_des' => 'Virtualization', 'last_time' => 1761600000]]]),
     ok(['total' => 900, 'rows' => [['job_name' => 'DAILY_VM-A', 'job_type' => 'Backup', 'job_status' => 'Successful', 'start_time' => (time() - 60) * 1000]]]),
+    ok(['total' => 0, 'rows' => []]),
 ];
 $s = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => ['VM-A']))->probe(5);
-check('vinchin probe: exactly one request per endpoint (no paging)', count($t->calls) === 2);
+check('vinchin probe: exactly one request per endpoint (no paging)', count($t->calls) === 3);
 check('vinchin probe: items is POST with offset 0, limit 5',
     $t->calls[0]['method'] === 'POST' && str_contains($t->calls[0]['url'], '/backup_data/items/list')
     && (json_decode((string) $t->calls[0]['body'], true)['offset'] ?? null) === 0
@@ -129,7 +130,7 @@ check('vinchin probe: items mapped (name/ip split)', ($s['objects'][0]->name ?? 
 check('vinchin probe: no errors', $s['errors'] === []);
 
 $t = new FakeT();
-$t->queue = [ko(), ok(['total' => 1, 'rows' => [['job_name' => 'DAILY_VM-A', 'job_type' => 'Backup', 'job_status' => 'Successful', 'start_time' => (time() - 60) * 1000]]])];
+$t->queue = [ko(), ok(['total' => 1, 'rows' => [['job_name' => 'DAILY_VM-A', 'job_type' => 'Backup', 'job_status' => 'Successful', 'start_time' => (time() - 60) * 1000]]]), ok(['total' => 0, 'rows' => []])];
 $s = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => ['VM-A']))->probe(5);
 check('vinchin probe: failing items endpoint still runs history', isset($s['raw']['/jobs/history']) && !isset($s['raw']['/backup_data/items/list']));
 check('vinchin probe: one error line, no key', count($s['errors']) === 1 && !str_contains($s['errors'][0], 'K'));
@@ -155,9 +156,10 @@ $t->queue = [
     ok(['total' => 0, 'rows' => []]),
     ko(),
     ok(['total' => 1, 'rows' => [['job_name' => 'DAILY_VM-A', 'job_type' => 'Backup', 'job_status' => 'Completed', 'start_time' => '2026-11-02 01:00:00']]]),
+    ok(['total' => 0, 'rows' => []]),
 ];
 $s = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => ['VM-A']))->probe(5);
-check('vinchin probe: history retried without sort when refused', count($t->calls) === 3
+check('vinchin probe: history retried without sort when refused', count($t->calls) === 4
     && !str_contains($t->calls[2]['url'], 'sort=') && isset($s['raw']['/jobs/history']) && $s['errors'] === []);
 
 // search (user has API access only, 2026-11-02): both endpoints get the keyword
@@ -168,6 +170,32 @@ check('probe search: items body carries the keyword', (json_decode((string) $t->
 check('probe search: history query carries the keyword', str_contains($t->calls[1]['url'], 'search=VM-TEST-02'));
 check('probe search: Probe::run passes it on', (bool) preg_match('/public static function run\(array \$connectionRow, callable \$decrypt, Matcher \$m, int \$limit = self::LIMIT, \?callable \$vmNames = null, string \$search = \'\'\)/', (string) file_get_contents(BI_ROOT . '/src/Probe.php')));
 check('probe page has a search field', str_contains((string) file_get_contents(BI_ROOT . '/front/probe.php'), "name=\"search\""));
+check('probe search: job list query carries the keyword', str_contains($t->calls[2]['url'], '/jobs?') && str_contains($t->calls[2]['url'], 'search=VM-TEST-02'));
+
+// job schedules (job names do not follow the real schedule, user 2026-11-02): list, then one detail per job
+$t = new FakeT();
+$t->queue = [
+    ok(['total' => 0, 'rows' => []]),
+    ok(['total' => 0, 'rows' => []]),
+    ok(['total' => 9, 'rows' => [['job_name' => 'J1', 'job_uuid' => 'u-1'], ['job_name' => 'J2', 'job_uuid' => 'u/2'], ['job_name' => 'no uuid']]]),
+    ok(['time_strategy' => [['mode' => 1, 'type' => 2, 'frequency' => 2, 'days' => [5]]], 'next_time' => '2026-11-06 00:00:00']),
+    ko(),
+];
+$s = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => []))->probe(5);
+check('job schedules: list is GET /jobs with offset 0, limit 5, one page',
+    $t->calls[2]['method'] === 'GET' && str_contains($t->calls[2]['url'], '/api/v1/jobs?') && str_contains($t->calls[2]['url'], 'limit=5') && count($t->calls) === 5);
+check('job schedules: one detail GET per job with a uuid (encoded)',
+    str_contains($t->calls[3]['url'], '/api/v1/jobs/u-1?') && str_contains($t->calls[4]['url'], '/api/v1/jobs/u%2F2?'));
+check('job schedules: raw list kept', count($s['raw']['/jobs'] ?? []) === 3);
+check('job schedules: detail carries uuid, name and time_strategy',
+    ($s['raw']['/jobs/{ID}'][0]['job_name'] ?? '') === 'J1' && ($s['raw']['/jobs/{ID}'][0]['time_strategy'][0]['frequency'] ?? null) === 2);
+check('job schedules: a failing detail is one error line, the others stay', count($s['raw']['/jobs/{ID}']) === 1 && count($s['errors']) === 1);
+
+$t = new FakeT();
+$t->queue = [ok(['total' => 0, 'rows' => []]), ok(['total' => 0, 'rows' => []]), ko()];
+$s = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => []))->probe(5);
+check('job schedules: refused job list is one error line, other endpoints kept', count($s['errors']) === 1 && !isset($s['raw']['/jobs']) && isset($s['raw']['/jobs/history']));
+
 check('probe search is trimmed and capped', Probe::cleanSearch("  VM-A  ") === 'VM-A' && mb_strlen(Probe::cleanSearch(str_repeat('x', 300))) === 100);
 
 done();
