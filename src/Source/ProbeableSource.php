@@ -10,9 +10,10 @@ interface ProbeableSource
 {
     /**
      * One page per endpoint, at most $limit rows each. An endpoint that fails adds one line
-     * to errors (no secret) and the others still run.
+     * to errors (no secret) and the others still run. $search narrows every endpoint to
+     * rows matching a keyword (VM or job name) when the source supports it.
      *
      * @return array{raw: array<string, list<array>>, objects: list<BackupObject>, errors: list<string>}
      */
-    public function probe(int $limit): array;
+    public function probe(int $limit, string $search = ''): array;
 }

@@ -39,18 +39,24 @@ final class Probe
      * @param (callable(): list<string>)|null $vmNames Computer names (job-history mapping)
      * @return array{raw: array<string, list<array>>, objects: list<Source\BackupObject>, matches: list<array>, errors: list<string>}
      */
-    public static function run(array $connectionRow, callable $decrypt, Matcher $m, int $limit = self::LIMIT, ?callable $vmNames = null): array
+    public static function run(array $connectionRow, callable $decrypt, Matcher $m, int $limit = self::LIMIT, ?callable $vmNames = null, string $search = ''): array
     {
         try {
             $source = Registry::create($connectionRow, $decrypt, $vmNames);
         } catch (\InvalidArgumentException $e) {
             return self::fromSource(null, $m, $limit, [$e->getMessage()]);
         }
-        return self::fromSource($source, $m, $limit);
+        return self::fromSource($source, $m, $limit, [], $search);
+    }
+
+    /** Search keyword from the form: trimmed, at most 100 characters. */
+    public static function cleanSearch(mixed $raw): string
+    {
+        return mb_substr(trim(is_scalar($raw) ? (string) $raw : ''), 0, 100);
     }
 
     /** Testable core of run(): any source, no Registry. */
-    public static function fromSource(?BackupSource $source, Matcher $m, int $limit = self::LIMIT, array $errors = []): array
+    public static function fromSource(?BackupSource $source, Matcher $m, int $limit = self::LIMIT, array $errors = [], string $search = ''): array
     {
         $out = ['raw' => [], 'objects' => [], 'matches' => [], 'errors' => $errors];
         if ($source === null) {
@@ -61,7 +67,7 @@ final class Probe
             return $out;
         }
 
-        $sample = $source->probe($limit);
+        $sample = $source->probe($limit, $search);
         foreach ($sample['raw'] as $endpoint => $rows) {
             $out['raw'][$endpoint] = array_map([self::class, 'redact'], $rows);
         }

@@ -79,7 +79,7 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
         return JobHistoryMapper::map($rows, $names, time());
     }
 
-    public function probe(int $limit): array
+    public function probe(int $limit, string $search = ''): array
     {
         $out = ['raw' => [], 'objects' => [], 'errors' => []];
 
@@ -95,7 +95,7 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
         // A sample is one page: stop after the first request, whatever 'total' says
         $firstPageOnly = static fn(): bool => true;
         try {
-            $rows = $this->client->postPaged(self::ITEMS_PATH, self::ITEMS_FILTER, $limit, $limit, $firstPageOnly);
+            $rows = $this->client->postPaged(self::ITEMS_PATH, ['search' => $search] + self::ITEMS_FILTER, $limit, $limit, $firstPageOnly);
             $out['raw'][self::ITEMS_PATH] = $rows;
             array_push($out['objects'], ...ItemMapper::map($rows));
         } catch (\RuntimeException $e) {
@@ -104,7 +104,7 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
 
         // Newest first, as the fetch() fallback asks; without sort Vinchin returns the oldest
         // rows (VM sample 2026-11-02). Some versions refuse sort: retry once without it.
-        $params = ['search' => '', 'sort' => 'start_time', 'order' => 'desc'];
+        $params = ['search' => $search, 'sort' => 'start_time', 'order' => 'desc'];
         try {
             try {
                 $rows = $this->client->getPaged(self::HISTORY_PATH, $params, $limit, $limit, $firstPageOnly);

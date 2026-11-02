@@ -25,6 +25,7 @@ foreach ($DB->request(['FROM' => Connection::getTable(), 'ORDER' => 'name']) as 
     $connections[(int) $row['id']] = $row;
 }
 $selected = (int) ($_POST['connections_id'] ?? 0);
+$search   = Probe::cleanSearch($_POST['search'] ?? '');
 
 Html::header(__('Probe', 'backupinfo'), '', \GlpiPlugin\Pgnsuite\Menu::SECTOR, 'backupinfo', 'probe');
 
@@ -38,6 +39,8 @@ foreach ($connections as $id => $row) {
 echo '<div class="flex-grow-1"><label class="form-label">' . __s('Connection', 'backupinfo') . '</label>';
 Dropdown::showFromArray('connections_id', $options, ['value' => $selected, 'width' => '100%']);
 echo '</div>';
+echo '<div class="flex-grow-1"><label class="form-label" for="backupinfo-probe-search">' . __s('Search (VM or job name, optional)', 'backupinfo') . '</label>'
+    . '<input type="text" class="form-control" id="backupinfo-probe-search" name="search" maxlength="100" value="' . htmlescape($search) . '"></div>';
 echo Html::submit(__('Take sample', 'backupinfo'), ['name' => 'probe', 'class' => 'btn btn-primary']);
 Html::closeForm();
 echo '</div></div>';
@@ -48,7 +51,8 @@ if (isset($_POST['probe']) && isset($connections[$selected])) {
         Cron::decryptor(),
         new Matcher(new DbAssetLookup()),
         Probe::LIMIT,
-        [Cron::class, 'computerNames']
+        [Cron::class, 'computerNames'],
+        $search
     );
 
     foreach ($result['errors'] as $error) {
