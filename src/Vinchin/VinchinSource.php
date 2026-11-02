@@ -3,9 +3,26 @@
 namespace GlpiPlugin\Backupinfo\Vinchin;
 
 use GlpiPlugin\Backupinfo\Source\BackupSource;
+use GlpiPlugin\Backupinfo\Source\ProbeableSource;
 
-final class VinchinSource implements BackupSource
+final class VinchinSource implements BackupSource, ProbeableSource
 {
+    private const ITEMS_PATH   = '/backup_data/items/list';
+    private const HISTORY_PATH = '/jobs/history';
+
+    /** Body of the console's Backup Object menu with no filter (vinchin-openapi.yaml). */
+    private const ITEMS_FILTER = [
+        'search' => '',
+        'sort' => 'item_name',
+        'order' => 'desc',
+        'module_type' => [],
+        'storage_uuid' => [],
+        'task_type' => [],
+        'operation_status' => [],
+        'status' => [],
+        'sub_module_type' => [],
+    ];
+
     /** @var callable(): list<string> */
     private $vmNames;
 
@@ -25,17 +42,7 @@ final class VinchinSource implements BackupSource
         }
 
         try {
-            $rows = $this->client->postPaged('/backup_data/items/list', [
-                'search' => '',
-                'sort' => 'item_name',
-                'order' => 'desc',
-                'module_type' => [],
-                'storage_uuid' => [],
-                'task_type' => [],
-                'operation_status' => [],
-                'status' => [],
-                'sub_module_type' => [],
-            ]);
+            $rows = $this->client->postPaged(self::ITEMS_PATH, self::ITEMS_FILTER);
             return ItemMapper::map($rows);
         } catch (\RuntimeException $itemsError) {
             // Backup Object refused: fall back to the job history below.
@@ -59,5 +66,39 @@ final class VinchinSource implements BackupSource
         }
 
         return JobHistoryMapper::map($rows, $names, time());
+    }
+
+    public function probe(int $limit): array
+    {
+        $out = ['raw' => [], 'objects' => [], 'errors' => []];
+
+        if ($this->useLogin) {
+            try {
+                $this->client->login();
+            } catch (\RuntimeException $e) {
+                $out['errors'][] = 'login: ' . $e->getMessage();
+                return $out;
+            }
+        }
+
+        // A sample is one page: stop after the first request, whatever 'total' says
+        $firstPageOnly = static fn(): bool => true;
+        try {
+            $rows = $this->client->postPaged(self::ITEMS_PATH, self::ITEMS_FILTER, $limit, $limit, $firstPageOnly);
+            $out['raw'][self::ITEMS_PATH] = $rows;
+            array_push($out['objects'], ...ItemMapper::map($rows));
+        } catch (\RuntimeException $e) {
+            $out['errors'][] = $e->getMessage();
+        }
+
+        try {
+            $rows = $this->client->getPaged(self::HISTORY_PATH, ['search' => '', 'order' => 'desc'], $limit, $limit, $firstPageOnly);
+            $out['raw'][self::HISTORY_PATH] = $rows;
+            array_push($out['objects'], ...JobHistoryMapper::map($rows, array_values(($this->vmNames)()), time()));
+        } catch (\RuntimeException $e) {
+            $out['errors'][] = $e->getMessage();
+        }
+
+        return $out;
     }
 }

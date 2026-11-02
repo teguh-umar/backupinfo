@@ -36,6 +36,13 @@ class Menu
                 $options['connection']['links'] = ['add' => '/plugins/backupinfo/front/connection.form.php'];
             }
         }
+        if (Session::haveRight(RightDefinition::CONFIG, UPDATE)) {
+            $options['probe'] = [
+                'title' => __('Probe', 'backupinfo'),
+                'page'  => '/plugins/backupinfo/front/probe.php',
+                'icon'  => 'ti ti-zoom-scan',
+            ];
+        }
         if ($options === []) {
             return null;
         }

@@ -45,9 +45,9 @@ final class Client
     }
 
     /** @return list<array<string,mixed>> */
-    public function postPaged(string $path, array $params, int $page = 100, int $max = 20000): array
+    public function postPaged(string $path, array $params, int $page = 100, int $max = 20000, ?callable $stop = null): array
     {
-        return $this->paged('POST', $path, $params, $page, $max, null);
+        return $this->paged('POST', $path, $params, $page, $max, $stop);
     }
 
     /** @return list<array<string,mixed>> */

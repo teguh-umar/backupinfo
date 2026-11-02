@@ -47,6 +47,28 @@ final class Cron extends \CommonGLPI
      * @param callable(string): void $log receives one line per connection / step (no secrets)
      * @return array{results: list<array{id:int,name:string,status:string,error:string,stats:array}>, fetched: int, touched: int, fields_error: string}
      */
+    /** @return callable(string): string decrypts a stored connection secret ('' stays '') */
+    public static function decryptor(): callable
+    {
+        $key = new GLPIKey();
+        return static fn(string $v): string => $v === '' ? '' : (string) ($key->decrypt($v) ?? '');
+    }
+
+    /** @return list<string> non-deleted, non-template Computer names (job-history mapping) */
+    public static function computerNames(): array
+    {
+        global $DB;
+        $names = [];
+        foreach ($DB->request([
+            'SELECT' => ['name'],
+            'FROM'   => Computer::getTable(),
+            'WHERE'  => ['is_deleted' => 0, 'is_template' => 0],
+        ]) as $row) {
+            $names[] = (string) $row['name'];
+        }
+        return $names;
+    }
+
     public static function runSync(callable $log): array
     {
         global $DB;
@@ -55,20 +77,8 @@ final class Cron extends \CommonGLPI
         $service = new SyncService();
         $store   = new DbObjectStore();
         $matcher = new Matcher(new DbAssetLookup());
-        $key     = new GLPIKey();
-        $decrypt = static fn(string $v): string => $v === '' ? '' : (string) ($key->decrypt($v) ?? '');
-        $vmNames = static function (): array {
-            global $DB;
-            $names = [];
-            foreach ($DB->request([
-                'SELECT' => ['name'],
-                'FROM'   => Computer::getTable(),
-                'WHERE'  => ['is_deleted' => 0, 'is_template' => 0],
-            ]) as $row) {
-                $names[] = (string) $row['name'];
-            }
-            return $names;
-        };
+        $decrypt = self::decryptor();
+        $vmNames = [self::class, 'computerNames'];
 
         $connections = [];
         foreach ($DB->request(['FROM' => self::CONNECTIONS, 'WHERE' => ['is_active' => 1]]) as $conn) {
