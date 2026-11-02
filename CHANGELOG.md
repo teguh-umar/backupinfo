@@ -1,5 +1,17 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.2.0-rc8 — 2026-11-02 (release candidate)
+
+Job schedule format checked against the official Vinchin v9 RESTful API doc (create/modify
+job and archive sections; the GET /jobs/{ID} section is out of date):
+- `frequency` "s<N>" = every N weeks, s1–s20, full backups only; blank = every week (was
+  read as "unknown"). Anything else ("d3", "s21", 0) = unknown schedule: global RPO, an error
+  line naming the job in the sync log and Probe. Never guessed or capped.
+- `days`: weekly 7-flag mask with index 0 = Monday, monthly 31-flag mask; 0/1 or booleans.
+- `time_strategy_backup_type` "oncetime" / "manual": no schedule (global RPO).
+- Any strategy not understood makes the job's whole schedule unknown (it could be the
+  shorter one).
+
 ## 0.2.0-rc7 — 2026-11-02 (release candidate)
 
 - Job schedule read in the shape this Vinchin really returns (Probe on the VM): weekly `days`
