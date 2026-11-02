@@ -1,5 +1,15 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.2.0-rc5 — 2026-11-02 (release candidate)
+
+- Probe page: Backup Info sub-nav (Coverage, Backup objects, Probe) now shows on the Probe page
+  too; before, opening Probe hid the other tabs.
+- Probe page: job schedules. One page of `GET /jobs` (with the search keyword), then
+  `GET /jobs/{ID}` per job, shown raw: `time_strategy` (type 1 daily, 2 weekly, 3 monthly;
+  `frequency`; `days`) and `next_time`. Job names do not follow the real schedule (a "(WEEKLY)"
+  job runs every two weeks), so the RPO per job will be read from this, once the VM sample
+  shows the fields. No RPO change in this build.
+
 ## 0.2.0-rc4 — 2026-11-02 (release candidate)
 
 - Probe page: optional **Search** (VM or job name). Vinchin's `search` is sent to both endpoints,
