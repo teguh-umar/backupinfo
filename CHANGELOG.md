@@ -1,6 +1,18 @@
 # Changelog — Backup Info (backupinfo)
 
-## 0.2.0-rc2 — 2026-11-02 (release candidate, not yet confirmed on VM-GLPI)
+## 0.2.0-rc3 — 2026-11-02 (release candidate, not yet confirmed on VM-GLPI)
+
+From the first Probe run on the VM (rc2):
+- **Connections are managed in Setup**: list, add, edit and delete inside Backup Info's section
+  of the PGN Suite settings page. The "Connections" entry is gone from the Tools ICT menu; old
+  `connection.php` / `connection.form.php` links forward to that section.
+- Vinchin's `"ip": "--"` (and `-`, `N/A`) is read as "no IP", so it never takes part in matching.
+- Probe's job-history sample is the newest rows (`sort=start_time`, `order=desc`, one retry
+  without sort); before, Vinchin returned the oldest rows.
+- Backup objects page: the state filter is a bordered button group (the pills had no visible
+  borders and an unreadable active state).
+
+## 0.2.0-rc2 — 2026-11-02 (superseded by rc3; Probe checked on the VM)
 
 - Upgrade step "CREATE/PURGE for config UPDATE holders" now reads the rights back and sets its
   one-shot marker `config_rights_v020` only when every holder is complete; otherwise the next
