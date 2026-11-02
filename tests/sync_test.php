@@ -6,6 +6,7 @@ require BI_ROOT . '/src/Source/BackupSource.php';
 require BI_ROOT . '/src/Source/PartialFetch.php';
 require BI_ROOT . '/src/Matching/AssetLookup.php';
 require BI_ROOT . '/src/Matching/Matcher.php';
+require BI_ROOT . '/src/Rpo.php';
 require BI_ROOT . '/src/Status.php';
 require BI_ROOT . '/src/Fields/FieldsGateway.php';
 require BI_ROOT . '/src/Fields/FieldsBridge.php';
@@ -138,7 +139,11 @@ check('matched count (web1 by name, e by ip)', $r['matched'] === 2, json_encode(
 check('review count', $r['review'] === 1);
 check('unmatched count (vm only)', $r['unmatched'] === 1);
 check('vm matched stored', $store->rows['1|a']['items_id'] === 7 && $store->rows['1|a']['match_state'] === 'matched');
-check('non-vm never matched', $store->rows['1|d']['items_id'] === 0 && $store->rows['1|d']['itemtype'] === '');
+check('schedule unknown stored as null', array_key_exists('schedule_hours', $store->rows['1|a']) && $store->rows['1|a']['schedule_hours'] === null);
+$store2 = new MemStore();
+$svc->run($conn, new FakeSource([obj('a', 'web1')->withSchedule(336)]), $store2, $m, 5000);
+check('schedule interval stored', ($store2->rows['1|a']['schedule_hours'] ?? null) === 336);
+check('non-vm never matched',$store->rows['1|d']['items_id'] === 0 && $store->rows['1|d']['itemtype'] === '');
 check('first run affected lists newly matched', in_array(7, $r['affected'], true) && in_array(11, $r['affected'], true));
 
 // stale rows deleted, affected reports them

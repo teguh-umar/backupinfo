@@ -66,6 +66,9 @@ foreach (['rpo_hours', 'policy_mode', 'fields_container', 'fields_status_field',
     'fields_mandatory_field'] as $key) {
     check("install seeds config $key", str_contains($install, "'$key'"));
 }
+check('rpo_grace_hours default 24', (bool) preg_match("/'rpo_grace_hours'\s*=>\s*(24|'24')/", $install));
+check('objects table has schedule_hours (NULL = unknown)', str_contains($install, '`schedule_hours` int unsigned DEFAULT NULL,'));
+check('upgrade adds schedule_hours behind fieldExists', (bool) preg_match("/fieldExists\\('glpi_plugin_backupinfo_objects', 'schedule_hours'\\)\\) \\{\\s*\\/\\/[^\\n]*\\n\\s*\\\$DB->doQuery\\(\"ALTER TABLE `glpi_plugin_backupinfo_objects` ADD COLUMN `schedule_hours`/", $install));
 check('rpo_hours default 26', (bool) preg_match("/'rpo_hours'\s*=>\s*(26|'26')/", $install));
 check('policy_mode default field', (bool) preg_match("/'policy_mode'\s*=>\s*'field'/", $install));
 check('defaults only written for keys missing from current values',

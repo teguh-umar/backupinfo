@@ -2,6 +2,7 @@
 
 require __DIR__ . '/bootstrap.php';
 require BI_ROOT . '/src/RightDefinition.php';
+require BI_ROOT . '/src/Rpo.php';
 require BI_ROOT . '/src/Status.php';
 require BI_ROOT . '/src/Policy.php';
 require BI_ROOT . '/src/SuiteConfig.php';
@@ -96,6 +97,19 @@ foreach (['0', '721', '-3', 'abc', '2.5', ''] as $bad) {
 }
 check('sanitize accepts RPO bounds', (SuiteConfig::sanitize(['rpo_hours' => '1'])['values']['rpo_hours'] ?? 0) === 1
     && (SuiteConfig::sanitize(['rpo_hours' => '720'])['values']['rpo_hours'] ?? 0) === 720);
+foreach (['-1', '169', 'x', '1.5', ''] as $bad) {
+    $r = SuiteConfig::sanitize(['rpo_grace_hours' => $bad]);
+    check("sanitize rejects grace '{$bad}'", !array_key_exists('rpo_grace_hours', $r['values']) && count($r['errors']) === 1);
+}
+check('sanitize accepts grace 0 and 168', (SuiteConfig::sanitize(['rpo_grace_hours' => '0'])['values']['rpo_grace_hours'] ?? null) === 0
+    && (SuiteConfig::sanitize(['rpo_grace_hours' => '168'])['values']['rpo_grace_hours'] ?? null) === 168);
+$sc = $read('src/SuiteConfig.php');
+check('Setup has the grace field', str_contains($sc, 'name="rpo_grace_hours"'));
+$at = $read('src/AssetTab.php');
+check('asset tab: RPO per row from Rpo', str_contains($at, 'Rpo::fromConfig()') && str_contains($at, '$rpo->label($o)'));
+foreach (['src/AssetTab.php', 'src/Policy.php', 'src/Cron.php', 'front/coverage.php'] as $f) {
+    check("{$f}: no own rpo_hours read (Rpo::fromConfig)", !str_contains($read($f), "['rpo_hours']"));
+}
 check('sanitize maps unknown policy mode to field', (SuiteConfig::sanitize(['policy_mode' => 'x'])['values']['policy_mode'] ?? '') === 'field');
 check('sanitize ignores absent keys', SuiteConfig::sanitize([])['values'] === []);
 check('sanitize ignores foreign keys', !array_key_exists('api_key', SuiteConfig::sanitize(['api_key' => 'x'])['values']));

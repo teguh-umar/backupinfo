@@ -94,15 +94,13 @@ final class Policy
     {
         $ids = $this->visible($this->mandatoryIds());
         if ($ids === []) {
-            return self::countCoverage([], [], 26, time());
+            return self::countCoverage([], [], Rpo::DEFAULT_GLOBAL, time());
         }
-        $cfg = Config::getConfigurationValues('plugin:backupinfo', ['rpo_hours']);
-        $rpo = (int) ($cfg['rpo_hours'] ?? 26);
 
         return self::countCoverage(
             $ids,
             self::groupByItem((new DbObjectStore())->matched()),
-            $rpo > 0 ? $rpo : 26,
+            Rpo::fromConfig(),
             time()
         );
     }
@@ -114,7 +112,7 @@ final class Policy
      * @param array<int, list<array<string, mixed>>> $objectsByItem matched objects keyed by Computer id
      * @return array{mandatory:int,protected:int,expired:int,none:int}
      */
-    public static function countCoverage(array $mandatoryIds, array $objectsByItem, int $rpoHours, int $nowS): array
+    public static function countCoverage(array $mandatoryIds, array $objectsByItem, int|Rpo $rpoHours, int $nowS): array
     {
         $out = ['mandatory' => 0, 'protected' => 0, 'expired' => 0, 'none' => 0];
         foreach (array_unique(array_map('intval', $mandatoryIds)) as $id) {

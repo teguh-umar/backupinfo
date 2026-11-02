@@ -23,28 +23,26 @@ final class Status
     ];
 
     /**
-     * @param list<array{last_backup: ?int}> $objects
+     * Protected when any object's last backup is within that object's own RPO (its job
+     * schedule + grace, or the global RPO; see Rpo). An int is the global RPO.
+     * Objects that exist but report no backup time count as expired, not protected.
+     *
+     * @param list<array{last_backup: ?int, schedule_hours?: ?int}> $objects
      */
-    public static function of(array $objects, int $rpoHours, int $nowS): string
+    public static function of(array $objects, int|Rpo $rpo, int $nowS): string
     {
         if ($objects === []) {
             return self::NONE;
         }
 
-        $newest = null;
+        $rpo = Rpo::of($rpo);
         foreach ($objects as $object) {
             $time = self::time($object);
-            if ($time !== null && ($newest === null || $time > $newest)) {
-                $newest = $time;
+            if ($time !== null && ($nowS - $time) <= $rpo->hoursFor($object) * 3600) {
+                return self::PROTECTED;
             }
         }
-
-        // Objects exist but none reported a backup time: a backup object, not a protected one.
-        if ($newest === null) {
-            return self::EXPIRED;
-        }
-
-        return ($nowS - $newest) <= $rpoHours * 3600 ? self::PROTECTED : self::EXPIRED;
+        return self::EXPIRED;
     }
 
     public static function hasBackup(string $status): bool

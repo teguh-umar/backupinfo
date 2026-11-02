@@ -13,6 +13,7 @@ require BI_ROOT . '/src/Vinchin/CurlTransport.php';
 require BI_ROOT . '/src/Vinchin/Client.php';
 require BI_ROOT . '/src/Vinchin/ItemMapper.php';
 require BI_ROOT . '/src/Vinchin/JobHistoryMapper.php';
+require BI_ROOT . '/src/Vinchin/ScheduleMapper.php';
 require BI_ROOT . '/src/Vinchin/VinchinSource.php';
 
 use GlpiPlugin\Backupinfo\Source\BackupObject;

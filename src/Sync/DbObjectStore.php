@@ -32,6 +32,7 @@ final class DbObjectStore implements ObjectStore
             'last_backup'    => $row['last_backup'] === null ? null : date('Y-m-d H:i:s', (int) $row['last_backup']),
             'restore_points' => (int) $row['restore_points'],
             'data_size'      => (string) $row['data_size'],
+            'schedule_hours' => ($row['schedule_hours'] ?? null) === null ? null : (int) $row['schedule_hours'],
             'abnormal_chain' => (int) $row['abnormal_chain'],
             'source_deleted' => (int) $row['source_deleted'],
             'itemtype'       => $row['itemtype'],
@@ -145,6 +146,8 @@ final class DbObjectStore implements ObjectStore
         $row['last_backup']    = ($last === null || $last === '') ? null : (int) strtotime((string) $last);
         $row['items_id']       = (int) $row['items_id'];
         $row['connections_id'] = (int) $row['connections_id'];
+        $sched                 = $row['schedule_hours'] ?? null;
+        $row['schedule_hours'] = ($sched === null || $sched === '') ? null : (int) $sched;
         return $row;
     }
 }

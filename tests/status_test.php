@@ -2,6 +2,7 @@
 
 require __DIR__ . '/bootstrap.php';
 
+require BI_ROOT . '/src/Rpo.php';
 require BI_ROOT . '/src/Status.php';
 
 use GlpiPlugin\Backupinfo\Status;

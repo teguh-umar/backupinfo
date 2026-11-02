@@ -6,6 +6,7 @@ use GlpiPlugin\Backupinfo\Fields\FieldsBridge;
 use GlpiPlugin\Backupinfo\Matching\Matcher;
 use GlpiPlugin\Backupinfo\Source\BackupSource;
 use GlpiPlugin\Backupinfo\Source\PartialFetch;
+use GlpiPlugin\Backupinfo\Rpo;
 use GlpiPlugin\Backupinfo\Status;
 
 /**
@@ -79,6 +80,7 @@ class SyncService
                 'last_backup'    => $o->lastBackup,
                 'restore_points' => $o->restorePoints,
                 'data_size'      => self::cap($o->dataSize, 64),
+                'schedule_hours' => $o->scheduleHours,
                 'abnormal_chain' => $o->abnormalChain ? 1 : 0,
                 'source_deleted' => $o->sourceDeleted ? 1 : 0,
                 'itemtype'       => (string) $match['itemtype'],
@@ -171,7 +173,7 @@ class SyncService
      * @param list<int> $extraItemIds
      * @return int number of assets whose Fields values were changed
      */
-    public function applyToAssets(ObjectStore $store, FieldsBridge $f, int $rpoHours, int $nowS, array $extraItemIds = []): int
+    public function applyToAssets(ObjectStore $store, FieldsBridge $f, int|Rpo $rpoHours, int $nowS, array $extraItemIds = []): int
     {
         if (!$f->available()) {
             return 0;

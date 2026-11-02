@@ -3,7 +3,6 @@
 namespace GlpiPlugin\Backupinfo;
 
 use Computer;
-use Config;
 use CronTask;
 use GlpiPlugin\Backupinfo\Fields\FieldsBridge;
 use GlpiPlugin\Backupinfo\Matching\DbAssetLookup;
@@ -85,9 +84,12 @@ final class Cron extends \CommonGLPI
             $connections[] = $conn;
         }
 
+        $sources = [];
         $out = $service->runAll(
             $connections,
-            static fn(array $conn) => Registry::create($conn, $decrypt, $vmNames),
+            static function (array $conn) use ($decrypt, $vmNames, &$sources) {
+                return $sources[(int) $conn['id']] = Registry::create($conn, $decrypt, $vmNames);
+            },
             $store,
             $matcher,
             $now
@@ -98,6 +100,13 @@ final class Cron extends \CommonGLPI
             $update = ['last_sync' => date('Y-m-d H:i:s', $now), 'last_status' => $r['status'], 'last_error' => $r['error']];
             $DB->update(self::CONNECTIONS, $update, ['id' => $r['id']]);
             if ($r['status'] === 'ok') {
+                // Unread job schedules do not fail the sync: those objects use the global RPO.
+                $source         = $sources[$r['id']] ?? null;
+                $scheduleErrors = is_object($source) && method_exists($source, 'scheduleErrors') ? $source->scheduleErrors() : [];
+                if ($scheduleErrors !== []) {
+                    Toolbox::logInFile('backupinfo', sprintf("Sync %s: %d job schedule(s) not read, global RPO used: %s\n", $r['name'], count($scheduleErrors), $scheduleErrors[0]));
+                    $log(sprintf('%s: %d job schedule(s) not read (global RPO used)', $r['name'], count($scheduleErrors)));
+                }
                 $fetched += $r['stats']['fetched'];
                 $log(sprintf(
                     '%s: fetched %d, matched %d, needs review %d, not found %d',
@@ -131,12 +140,10 @@ final class Cron extends \CommonGLPI
     {
         $error = '';
         try {
-            $cfg = Config::getConfigurationValues('plugin:backupinfo', ['rpo_hours']);
-            $rpo = (int) ($cfg['rpo_hours'] ?? 26);
             return (new SyncService())->applyToAssets(
                 new DbObjectStore(),
                 FieldsBridge::fromConfig(),
-                $rpo > 0 ? $rpo : 26,
+                Rpo::fromConfig(),
                 $now ?? time(),
                 $extraItemIds
             );

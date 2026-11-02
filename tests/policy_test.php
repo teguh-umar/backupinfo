@@ -3,6 +3,7 @@
 require __DIR__ . '/bootstrap.php';
 require BI_ROOT . '/src/Fields/FieldsGateway.php';
 require BI_ROOT . '/src/Fields/FieldsBridge.php';
+require BI_ROOT . '/src/Rpo.php';
 require BI_ROOT . '/src/Status.php';
 require BI_ROOT . '/src/Policy.php';
 

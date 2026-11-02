@@ -5,6 +5,7 @@ namespace GlpiPlugin\Backupinfo\Source;
 /**
  * One protected (or unprotected) object as reported by a backup source.
  * lastBackup is a UTC epoch in seconds, or null when the source never reported a backup.
+ * scheduleHours is the job schedule interval (see Rpo), or null when unknown.
  */
 final class BackupObject
 {
@@ -19,6 +20,13 @@ final class BackupObject
         public readonly string $dataSize,
         public readonly bool $abnormalChain,
         public readonly bool $sourceDeleted,
+        public readonly ?int $scheduleHours = null,
     ) {
+    }
+
+    public function withSchedule(?int $hours): self
+    {
+        return new self($this->sourceKey, $this->name, $this->ip, $this->kind, $this->jobName, $this->lastBackup,
+            $this->restorePoints, $this->dataSize, $this->abnormalChain, $this->sourceDeleted, $hours);
     }
 }

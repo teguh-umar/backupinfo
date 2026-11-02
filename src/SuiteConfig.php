@@ -63,6 +63,14 @@ class SuiteConfig
                 $errors[] = sprintf(__('RPO must be a whole number of hours from %1$d to %2$d; it was not changed.', 'backupinfo'), self::RPO_MIN, self::RPO_MAX);
             }
         }
+        if (array_key_exists('rpo_grace_hours', $post)) {
+            $raw = trim((string) $post['rpo_grace_hours']);
+            if (preg_match('/^\d+$/', $raw) === 1 && (int) $raw <= Rpo::GRACE_MAX) {
+                $values['rpo_grace_hours'] = (int) $raw;
+            } else {
+                $errors[] = sprintf(__('Grace must be a whole number of hours from 0 to %d; it was not changed.', 'backupinfo'), Rpo::GRACE_MAX);
+            }
+        }
         if (array_key_exists('policy_mode', $post)) {
             $values['policy_mode'] = (string) $post['policy_mode'] === Policy::MODE_MANUAL ? Policy::MODE_MANUAL : Policy::MODE_FIELD;
         }
@@ -113,7 +121,7 @@ class SuiteConfig
     {
         $canedit = Session::haveRight(RightDefinition::CONFIG, UPDATE);
         $action  = Html::getPrefixedUrl('/plugins/backupinfo/front/config.php');
-        $cfg     = Config::getConfigurationValues(self::CONTEXT, array_merge(['rpo_hours', 'policy_mode'], self::FIELD_KEYS));
+        $cfg     = Config::getConfigurationValues(self::CONTEXT, array_merge(['rpo_hours', 'rpo_grace_hours', 'policy_mode'], self::FIELD_KEYS));
         $bridge  = FieldsBridge::fromConfig();
 
         self::connections();
@@ -131,7 +139,12 @@ class SuiteConfig
         echo '<form method="post" action="' . htmlescape($action) . '">';
         echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __s('Backup policy', 'backupinfo') . '</h3></div><div class="card-body">';
 
-        echo '<div class="mb-3"><label class="form-label" for="backupinfo-rpo">' . __s('RPO (hours): a backup older than this is "expired"', 'backupinfo') . '</label>';
+        // A backup is "expired" when older than its job's schedule interval (read from the
+        // backup system) plus the grace; the RPO below applies when the schedule is unknown.
+        echo '<div class="mb-3"><label class="form-label" for="backupinfo-grace">' . __s('Grace (hours) after the job schedule: a backup older than schedule + grace is "expired"', 'backupinfo') . '</label>';
+        echo '<input type="number" min="0" max="' . Rpo::GRACE_MAX . '" step="1" class="form-control" id="backupinfo-grace" name="rpo_grace_hours" value="'
+            . Rpo::fromValues($cfg)->graceHours . '"' . ($canedit ? '' : ' disabled') . '></div>';
+        echo '<div class="mb-3"><label class="form-label" for="backupinfo-rpo">' . __s('RPO (hours) when the job schedule is unknown', 'backupinfo') . '</label>';
         echo '<input type="number" min="' . self::RPO_MIN . '" max="' . self::RPO_MAX . '" step="1" class="form-control" id="backupinfo-rpo" name="rpo_hours" value="'
             . (int) ($cfg['rpo_hours'] ?? 26) . '"' . ($canedit ? '' : ' disabled') . '></div>';
 

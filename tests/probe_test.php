@@ -5,7 +5,7 @@ require __DIR__ . '/bootstrap.php';
 foreach ([
     'Source/BackupObject', 'Source/BackupSource', 'Source/ProbeableSource', 'Source/PartialFetch', 'Source/Registry',
     'Vinchin/Signer', 'Vinchin/Transport', 'Vinchin/CurlTransport', 'Vinchin/Client',
-    'Vinchin/ItemMapper', 'Vinchin/JobHistoryMapper', 'Vinchin/VinchinSource',
+    'Vinchin/ItemMapper', 'Vinchin/JobHistoryMapper', 'Vinchin/ScheduleMapper', 'Vinchin/VinchinSource',
     'Matching/AssetLookup', 'Matching/Matcher', 'Probe',
 ] as $f) {
     require BI_ROOT . "/src/$f.php";
@@ -169,6 +169,7 @@ $t->queue = [ok(['total' => 0, 'rows' => [['item_name' => 'VM-TEST-02', 'module_
 check('probe search: items body carries the keyword', (json_decode((string) $t->calls[0]['body'], true)['search'] ?? null) === 'VM-TEST-02');
 check('probe search: history query carries the keyword', str_contains($t->calls[1]['url'], 'search=VM-TEST-02'));
 check('probe search: Probe::run passes it on', (bool) preg_match('/public static function run\(array \$connectionRow, callable \$decrypt, Matcher \$m, int \$limit = self::LIMIT, \?callable \$vmNames = null, string \$search = \'\'\)/', (string) file_get_contents(BI_ROOT . '/src/Probe.php')));
+check('probe page shows the RPO per row', str_contains((string) file_get_contents(BI_ROOT . '/front/probe.php'), "\$rpo->label(['schedule_hours' => \$o->scheduleHours])"));
 check('probe page has a search field', str_contains((string) file_get_contents(BI_ROOT . '/front/probe.php'), "name=\"search\""));
 check('probe search: job list query carries the keyword', str_contains($t->calls[2]['url'], '/jobs?') && str_contains($t->calls[2]['url'], 'search=VM-TEST-02'));
 

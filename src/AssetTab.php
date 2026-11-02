@@ -4,7 +4,6 @@ namespace GlpiPlugin\Backupinfo;
 
 use CommonDBTM;
 use Computer;
-use Config;
 use GlpiPlugin\Backupinfo\Sync\DbObjectStore;
 use Html;
 use Session;
@@ -48,9 +47,7 @@ final class AssetTab
 
         $id      = (int) $item->getID();
         $objects = (new DbObjectStore())->forItem($id);
-        $cfg     = Config::getConfigurationValues('plugin:backupinfo', ['rpo_hours']);
-        $rpo     = (int) ($cfg['rpo_hours'] ?? 26);
-        $rpo     = $rpo > 0 ? $rpo : 26;
+        $rpo     = Rpo::fromConfig();
         $now     = time();
         $status  = Status::of($objects, $rpo, $now);
 
@@ -80,7 +77,6 @@ final class AssetTab
                 . '</strong> (' . htmlescape(sprintf(__('%s ago', 'backupinfo'), self::age($now - $newest))) . ')</span>';
         }
         echo '<span>' . __s('Must be backed up', 'backupinfo') . ': <strong>' . ($mandatory ? __s('Yes') : __s('No')) . '</strong></span>';
-        echo '<span>' . __s('RPO', 'backupinfo') . ': ' . (int) $rpo . ' h</span>';
         echo '<span class="text-muted">' . __s('Last sync', 'backupinfo') . ': '
             . htmlescape($lastSync !== '' ? Html::convDateTime($lastSync) : __('never', 'backupinfo')) . '</span>';
         echo '</div>';
@@ -96,6 +92,7 @@ final class AssetTab
             . '<th>' . __s('Kind', 'backupinfo') . '</th>'
             . '<th>' . __s('Job', 'backupinfo') . '</th>'
             . '<th>' . __s('Last backup', 'backupinfo') . '</th>'
+            . '<th>' . __s('RPO', 'backupinfo') . '</th>'
             . '<th>' . __s('Restore points', 'backupinfo') . '</th>'
             . '<th>' . __s('Size', 'backupinfo') . '</th>'
             . '<th>' . __s('Flags', 'backupinfo') . '</th>'
@@ -117,6 +114,7 @@ final class AssetTab
                 . '<td>' . htmlescape((string) ($o['kind'] ?? '')) . '</td>'
                 . '<td>' . htmlescape((string) ($o['job_name'] ?? '')) . '</td>'
                 . '<td>' . ($last === null ? '-' : htmlescape(Html::convDateTime(date('Y-m-d H:i:s', (int) $last)) . ' (' . self::age($now - (int) $last) . ')')) . '</td>'
+                . '<td>' . htmlescape($rpo->label($o)) . '</td>'
                 . '<td>' . (int) ($o['restore_points'] ?? 0) . '</td>'
                 . '<td>' . htmlescape(self::sizeText((string) ($o['data_size'] ?? ''))) . '</td>'
                 . '<td>' . htmlescape(implode(', ', $flags)) . '</td>'

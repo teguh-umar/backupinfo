@@ -73,6 +73,7 @@ function plugin_backupinfo_install()
             `last_backup` timestamp NULL DEFAULT NULL,
             `restore_points` int unsigned NOT NULL DEFAULT 0,
             `data_size` varchar(64) NOT NULL DEFAULT '',
+            `schedule_hours` int unsigned DEFAULT NULL,
             `abnormal_chain` tinyint NOT NULL DEFAULT 0,
             `source_deleted` tinyint NOT NULL DEFAULT 0,
             `itemtype` varchar(100) DEFAULT NULL,
@@ -83,6 +84,9 @@ function plugin_backupinfo_install()
             UNIQUE KEY `unicity` (`connections_id`, `source_key`),
             KEY `item` (`itemtype`, `items_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    } elseif (!$DB->fieldExists('glpi_plugin_backupinfo_objects', 'schedule_hours')) {
+        // 0.2.0-rc6: job schedule interval (NULL = unknown, the global RPO applies)
+        $DB->doQuery("ALTER TABLE `glpi_plugin_backupinfo_objects` ADD COLUMN `schedule_hours` int unsigned DEFAULT NULL AFTER `data_size`");
     }
 
     // Manual policy: assets expected to be backed up
@@ -115,6 +119,7 @@ function plugin_backupinfo_install()
     // Config defaults: only keys that are not set yet
     $defaults = [
         'rpo_hours'              => 26,
+        'rpo_grace_hours'        => 24,
         'policy_mode'            => 'field',
         'fields_container'       => '',
         'fields_status_field'    => '',

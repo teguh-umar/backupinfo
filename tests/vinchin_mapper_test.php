@@ -13,6 +13,7 @@ require BI_ROOT . '/src/Vinchin/CurlTransport.php';
 require BI_ROOT . '/src/Vinchin/Client.php';
 require BI_ROOT . '/src/Vinchin/ItemMapper.php';
 require BI_ROOT . '/src/Vinchin/JobHistoryMapper.php';
+require BI_ROOT . '/src/Vinchin/ScheduleMapper.php';
 require BI_ROOT . '/src/Vinchin/VinchinSource.php';
 
 use GlpiPlugin\Backupinfo\Source\Registry;
@@ -139,7 +140,7 @@ $t = new FakeT();
 $t->queue = [bad(), bad(), okr(['total' => 0, 'rows' => []])];
 $src = new VinchinSource(new Client('h', $t, 'K'), false, fn() => ['VM-Q']);
 $src->fetch();
-check('source: retries history without sort', count($t->calls) === 3 && !str_contains($t->calls[2]['url'], 'sort='));
+check('source: retries history without sort', str_contains($t->calls[2]['url'], '/jobs/history') && !str_contains($t->calls[2]['url'], 'sort='));
 
 $t = new FakeT();
 $t->queue = [okr(['access_token' => 'TK']), okr(['total' => 0, 'rows' => []])];
@@ -216,5 +217,40 @@ $r = ItemMapper::map([['item_name' => 'x', 'item_uuid' => 'u1', 'module_type_des
 check('ip "-" is treated as empty (non-VM too)', $r[0]->ip === '');
 $r = ItemMapper::map([['item_name' => 'VM-B', 'module_type_des' => 'Virtualization', 'ip' => '10.0.0.9']]);
 check('a real ip is kept', $r[0]->ip === '10.0.0.9');
+
+// schedules (rc6): fetch reads each job's time_strategy; job names are not trusted
+$t = new FakeT();
+$t->queue = [
+    okr(['total' => 2, 'rows' => [
+        ['item_name' => 'VM-A', 'module_type_des' => 'Virtualization', 'last_time' => 1761600000, 'task_name' => 'VM BACKUP_A (WEEKLY)'],
+        ['item_name' => 'VM-B', 'module_type_des' => 'Virtualization', 'last_time' => 1761600000, 'task_name' => 'JOB-B'],
+    ]]),
+    okr(['total' => 3, 'rows' => [
+        ['job_name' => 'VM BACKUP_A (WEEKLY)', 'job_uuid' => 'ua'],
+        ['job_name' => 'UNRELATED RESTORE', 'job_uuid' => 'ux'],
+        ['job_name' => 'JOB-B', 'job_uuid' => 'ub'],
+    ]]),
+    okr(['time_strategy' => [['mode' => 1, 'type' => 2, 'frequency' => 2, 'days' => [5]]]]),
+    okr(['time_strategy' => [['type' => 9]]]),
+];
+$src = new VinchinSource(new Client('h', $t, 'K'), false, fn() => []);
+$r = $src->fetch();
+$byName = [];
+foreach ($r as $o) {
+    $byName[$o->name] = $o;
+}
+check('schedules: two-week job gives 336 h', ($byName['VM-A']->scheduleHours ?? null) === 336);
+check('schedules: unreadable strategy stays unknown', array_key_exists('VM-B', $byName) && $byName['VM-B']->scheduleHours === null);
+check('schedules: job list is GET /jobs', $t->calls[1]['method'] === 'GET' && str_contains($t->calls[1]['url'], '/api/v1/jobs?'));
+check('schedules: details only for jobs the objects name', count($t->calls) === 4
+    && str_contains($t->calls[2]['url'], '/jobs/ua?') && str_contains($t->calls[3]['url'], '/jobs/ub?'));
+check('schedules: no errors', $src->scheduleErrors() === []);
+
+$t = new FakeT();
+$t->queue = [okr(['total' => 1, 'rows' => [['item_name' => 'VM-A', 'module_type_des' => 'Virtualization', 'last_time' => 1761600000, 'task_name' => 'J']]]), bad()];
+$src = new VinchinSource(new Client('h', $t, 'K'), false, fn() => []);
+$r = $src->fetch();
+check('schedules: refused job list keeps the objects, schedule unknown', count($r) === 1 && $r[0]->scheduleHours === null);
+check('schedules: refused job list is one error line, no key', count($src->scheduleErrors()) === 1 && !str_contains($src->scheduleErrors()[0], 'K'));
 
 done();

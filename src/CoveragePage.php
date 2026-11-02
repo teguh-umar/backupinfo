@@ -21,7 +21,7 @@ final class CoveragePage
      * @return array{counts: array{mandatory:int,protected:int,expired:int,none:int}, percent: int,
      *               missing: list<array{id:int,name:string,status:string,last_backup:?int}>}
      */
-    public static function build(array $computers, array $objectsByItem, int $rpoHours, int $nowS): array
+    public static function build(array $computers, array $objectsByItem, int|Rpo $rpoHours, int $nowS): array
     {
         $counts  = Policy::countCoverage(array_keys($computers), $objectsByItem, $rpoHours, $nowS);
         $missing = [];
@@ -53,7 +53,7 @@ final class CoveragePage
      * @param array{counts: array, percent: int, missing: list<array>} $model
      * @param list<array<string, mixed>>|null $unmatched null when the user may not see them
      */
-    public static function render(array $model, string $policyMode, int $rpoHours, ?array $unmatched, int $unmatchedTotal, int $nowS): void
+    public static function render(array $model, string $policyMode, int|Rpo $rpoHours, ?array $unmatched, int $unmatchedTotal, int $nowS): void
     {
         $c = $model['counts'];
         echo '<div class="card mb-3"><div class="card-body">';
@@ -73,7 +73,8 @@ final class CoveragePage
             echo '<tr class="tab_bg_1"><td>' . (int) $c['mandatory'] . '</td><td>' . (int) $c['protected'] . '</td><td>'
                 . (int) $c['expired'] . '</td><td>' . (int) $c['none'] . '</td></tr></table>';
         }
-        echo '<div class="text-muted mt-2">' . htmlescape(sprintf(__('Policy: %1$s. RPO: %2$d h.', 'backupinfo'), $policyMode === Policy::MODE_MANUAL ? __('manual list', 'backupinfo') : __('"Wajib Backup" field', 'backupinfo'), $rpoHours)) . '</div>';
+        $rpo = Rpo::of($rpoHours);
+        echo '<div class="text-muted mt-2">' . htmlescape(sprintf(__('Policy: %1$s. RPO: job schedule + %2$d h, or %3$d h when the schedule is unknown.', 'backupinfo'), $policyMode === Policy::MODE_MANUAL ? __('manual list', 'backupinfo') : __('"Wajib Backup" field', 'backupinfo'), $rpo->graceHours, $rpo->globalHours)) . '</div>';
         echo '</div></div>';
 
         echo '<h3>' . __s('Must be backed up, but not protected', 'backupinfo') . '</h3>';

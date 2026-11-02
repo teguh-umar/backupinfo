@@ -12,6 +12,7 @@ use GlpiPlugin\Backupinfo\Matching\DbAssetLookup;
 use GlpiPlugin\Backupinfo\Matching\Matcher;
 use GlpiPlugin\Backupinfo\Probe;
 use GlpiPlugin\Backupinfo\RightDefinition;
+use GlpiPlugin\Backupinfo\Rpo;
 use GlpiPlugin\Backupinfo\Source\Registry;
 
 include('../../../inc/includes.php');
@@ -74,11 +75,12 @@ if (isset($_POST['probe']) && isset($connections[$selected])) {
         echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __s('As the plugin reads it', 'backupinfo') . '</h3></div>';
         echo '<div class="table-responsive"><table class="table table-sm table-striped mb-0"><thead><tr>';
         foreach ([__('Name'), __('IP'), __('Kind', 'backupinfo'), __('Job', 'backupinfo'), __('Last backup', 'backupinfo'),
-            __('Restore points', 'backupinfo'), __('Size', 'backupinfo'), __('Flags', 'backupinfo'), __('Match', 'backupinfo')] as $head) {
+            __('RPO', 'backupinfo'), __('Restore points', 'backupinfo'), __('Size', 'backupinfo'), __('Flags', 'backupinfo'), __('Match', 'backupinfo')] as $head) {
             echo '<th>' . htmlescape($head) . '</th>';
         }
         echo '</tr></thead><tbody>';
         $now = time();
+        $rpo = Rpo::fromConfig();
         foreach ($result['objects'] as $i => $o) {
             $last = $o->lastBackup === null ? '—'
                 : date('Y-m-d H:i', $o->lastBackup) . ' (' . sprintf(__('%d h ago', 'backupinfo'), intdiv(max(0, $now - $o->lastBackup), 3600)) . ')';
@@ -103,6 +105,7 @@ if (isset($_POST['probe']) && isset($connections[$selected])) {
                 . '<td>' . htmlescape($o->kind) . '</td>'
                 . '<td>' . htmlescape($o->jobName) . '</td>'
                 . '<td>' . htmlescape($last) . '</td>'
+                . '<td>' . htmlescape($rpo->label(['schedule_hours' => $o->scheduleHours])) . '</td>'
                 . '<td>' . (int) $o->restorePoints . '</td>'
                 . '<td>' . htmlescape($o->dataSize) . '</td>'
                 . '<td>' . htmlescape(implode(', ', $flags)) . '</td>'

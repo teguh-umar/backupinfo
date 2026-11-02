@@ -2,6 +2,7 @@
 
 namespace GlpiPlugin\Backupinfo\Vinchin;
 
+use GlpiPlugin\Backupinfo\Source\BackupObject;
 use GlpiPlugin\Backupinfo\Source\BackupSource;
 use GlpiPlugin\Backupinfo\Source\PartialFetch;
 use GlpiPlugin\Backupinfo\Source\ProbeableSource;
@@ -10,6 +11,9 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
 {
     /** true when the last fetch() came from the job-history fallback (recent VM jobs only) */
     private bool $partial = false;
+
+    /** @var list<string> */
+    private array $scheduleErrors = [];
 
     private const ITEMS_PATH   = '/backup_data/items/list';
     private const HISTORY_PATH = '/jobs/history';
@@ -54,7 +58,7 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
 
         try {
             $rows = $this->client->postPaged(self::ITEMS_PATH, self::ITEMS_FILTER);
-            return ItemMapper::map($rows);
+            return $this->withSchedules(ItemMapper::map($rows));
         } catch (\RuntimeException $itemsError) {
             // Backup Object refused: fall back to the job history below.
         }
@@ -77,7 +81,76 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
         }
 
         $this->partial = true;
-        return JobHistoryMapper::map($rows, $names, time());
+        return $this->withSchedules(JobHistoryMapper::map($rows, $names, time()));
+    }
+
+    /** Errors of the last fetch()'s schedule lookup (objects then use the global RPO). */
+    public function scheduleErrors(): array
+    {
+        return $this->scheduleErrors;
+    }
+
+    /**
+     * Sets each object's schedule interval from its jobs' time_strategy. Never throws: a job
+     * whose schedule cannot be read stays unknown, and the global RPO applies to it.
+     *
+     * @param list<BackupObject> $objects
+     * @return list<BackupObject>
+     */
+    private function withSchedules(array $objects): array
+    {
+        $wanted = [];
+        foreach ($objects as $o) {
+            foreach (explode(',', mb_strtolower($o->jobName)) as $name) {
+                if (trim($name) !== '') {
+                    $wanted[trim($name)] = true;
+                }
+            }
+            $wanted[mb_strtolower(trim($o->jobName))] = true;
+        }
+
+        $s = $this->schedules('', 100, 5000, null, $wanted);
+        $this->scheduleErrors = $s['errors'];
+        return array_map(static fn(BackupObject $o): BackupObject => $o->withSchedule(ScheduleMapper::forObject($o->jobName, $s['byJob'])), $objects);
+    }
+
+    /**
+     * GET /jobs, then GET /jobs/{ID} for each listed job ($wanted = lowercased names to look
+     * up, null = every listed job). Never throws.
+     *
+     * @param array<string, true>|null $wanted
+     * @return array{jobs: list<array>, details: list<array>, byJob: array<string, int>, errors: list<string>, listed: bool}
+     */
+    private function schedules(string $search, int $page, int $max, ?callable $stop, ?array $wanted): array
+    {
+        $out = ['jobs' => [], 'details' => [], 'byJob' => [], 'errors' => [], 'listed' => false];
+        try {
+            $out['jobs']   = $this->client->getPaged(self::JOBS_PATH, ['search' => $search], $page, $max, $stop);
+            $out['listed'] = true;
+        } catch (\RuntimeException $e) {
+            $out['errors'][] = $e->getMessage();
+            return $out;
+        }
+
+        foreach ($out['jobs'] as $job) {
+            $uuid = is_array($job) ? (string) ($job['job_uuid'] ?? '') : '';
+            $name = is_array($job) ? trim((string) ($job['job_name'] ?? '')) : '';
+            if ($uuid === '' || ($wanted !== null && !isset($wanted[mb_strtolower($name)]))) {
+                continue;
+            }
+            try {
+                $data = $this->client->get(self::JOBS_PATH . '/' . rawurlencode($uuid));
+                $data = is_array($data) ? $data : [];
+                $out['details'][] = ['job_uuid' => $uuid, 'job_name' => $name] + $data;
+                $hours = ScheduleMapper::intervalHours($data);
+                if ($hours !== null && $name !== '') {
+                    $out['byJob'][mb_strtolower($name)] = $hours;
+                }
+            } catch (\RuntimeException $e) {
+                $out['errors'][] = $e->getMessage();
+            }
+        }
+        return $out;
     }
 
     public function probe(int $limit, string $search = ''): array
@@ -121,27 +194,14 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
 
         // Job schedules: the job list, then one detail call per job for its time_strategy
         // (type 1 daily, 2 weekly, 3 monthly; frequency; days) and next_time. Job names do not
-        // follow the real schedule (user, 2026-11-02), so an RPO per job would read this.
-        try {
-            $jobs = $this->client->getPaged(self::JOBS_PATH, ['search' => $search], $limit, $limit, $firstPageOnly);
-            $out['raw'][self::JOBS_PATH] = $jobs;
-            $details = [];
-            foreach ($jobs as $job) {
-                $uuid = is_array($job) ? (string) ($job['job_uuid'] ?? '') : '';
-                if ($uuid === '') {
-                    continue;
-                }
-                try {
-                    $data = $this->client->get(self::JOBS_PATH . '/' . rawurlencode($uuid));
-                    $details[] = ['job_uuid' => $uuid, 'job_name' => (string) ($job['job_name'] ?? '')] + (is_array($data) ? $data : []);
-                } catch (\RuntimeException $e) {
-                    $out['errors'][] = $e->getMessage();
-                }
-            }
-            $out['raw'][self::JOBS_PATH . '/{ID}'] = $details;
-        } catch (\RuntimeException $e) {
-            $out['errors'][] = $e->getMessage();
+        // follow the real schedule (user, 2026-11-02); the RPO per object comes from here.
+        $s = $this->schedules($search, $limit, $limit, $firstPageOnly, null);
+        if ($s['listed']) {
+            $out['raw'][self::JOBS_PATH]          = $s['jobs'];
+            $out['raw'][self::JOBS_PATH . '/{ID}'] = $s['details'];
         }
+        array_push($out['errors'], ...$s['errors']);
+        $out['objects'] = array_map(static fn(BackupObject $o): BackupObject => $o->withSchedule(ScheduleMapper::forObject($o->jobName, $s['byJob'])), $out['objects']);
 
         return $out;
     }

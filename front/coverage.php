@@ -8,15 +8,14 @@
 use GlpiPlugin\Backupinfo\CoveragePage;
 use GlpiPlugin\Backupinfo\Policy;
 use GlpiPlugin\Backupinfo\RightDefinition;
+use GlpiPlugin\Backupinfo\Rpo;
 use GlpiPlugin\Backupinfo\Sync\DbObjectStore;
 
 include('../../../inc/includes.php');
 Session::checkRight(RightDefinition::REPORT, READ);
 global $DB; // front files run inside a function under GLPI 11 routing
 
-$cfg    = Config::getConfigurationValues('plugin:backupinfo', ['rpo_hours']);
-$rpo    = (int) ($cfg['rpo_hours'] ?? 26);
-$rpo    = $rpo > 0 ? $rpo : 26;
+$rpo    = Rpo::fromConfig();
 $now    = time();
 $policy = Policy::fromConfig();
 
