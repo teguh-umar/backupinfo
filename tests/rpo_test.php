@@ -57,6 +57,16 @@ check('weekly, no days, no frequency: 168 h', ScheduleMapper::intervalHours($d([
 check('monthly day 1: 31 days', ScheduleMapper::intervalHours($d(['type' => 3, 'days' => [1]])) === 744);
 check('monthly 1 + 15: longest gap 17 days', ScheduleMapper::intervalHours($d(['type' => 3, 'days' => [1, 15]])) === 408);
 check('full weekly + incremental daily: the shortest wins', ScheduleMapper::intervalHours($d(['mode' => 1, 'type' => 2, 'days' => [5]], ['mode' => 2, 'type' => 1])) === 24);
+// Real Vinchin shape (VM sample 2026-11-02): days is a 7-flag weekday mask, frequency "s2"
+$real = ['time_strategy_backup_type' => 'strategy', 'time_strategy' => [[
+    'mode' => 1, 'type' => 2, 'days' => [0, 0, 0, 0, 1, 0, 0], 'frequency' => 's2',
+    'start_time' => '00:05:00', 'roll_flag' => false, 'roll_interval' => '01:00:00', 'end_time' => '23:59:59',
+]]];
+check('real sample: one weekday every 2 weeks = 336 h (VM-TEST-02)', ScheduleMapper::intervalHours($real) === 336);
+check('weekday mask, two days (Mon + Thu), weekly: 96 h', ScheduleMapper::intervalHours($d(['type' => 2, 'frequency' => 's1', 'days' => [0, 1, 0, 0, 1, 0, 0]])) === 96);
+check('weekday mask, empty: whole cycle', ScheduleMapper::intervalHours($d(['type' => 2, 'frequency' => 's2', 'days' => [0, 0, 0, 0, 0, 0, 0]])) === 336);
+check('frequency as plain string "3"', ScheduleMapper::intervalHours($d(['type' => 2, 'frequency' => '3', 'days' => [1, 0, 0, 0, 0, 0, 0]])) === 504);
+check('month-day mask (31 flags), days 1 and 15: 17 days', ScheduleMapper::intervalHours($d(['type' => 3, 'days' => array_replace(array_fill(0, 31, 0), [0 => 1, 14 => 1])])) === 408);
 check('unknown type: null', ScheduleMapper::intervalHours($d(['type' => 9])) === null);
 check('no time_strategy: null', ScheduleMapper::intervalHours([]) === null && ScheduleMapper::intervalHours(['time_strategy' => 'x']) === null);
 check('frequency is capped (bad value cannot make a huge RPO)', ScheduleMapper::intervalHours($d(['type' => 2, 'frequency' => 999, 'days' => [1]])) === 168 * ScheduleMapper::MAX_WEEKS);
