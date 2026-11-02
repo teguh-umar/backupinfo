@@ -113,20 +113,42 @@ class Profile extends \Profile
         return $new === $current ? null : $new;
     }
 
-    /** One-shot (install marker config_rights_v020): CREATE|PURGE for every config UPDATE holder. */
-    public static function grantCreatePurgeToEditors(): void
+    /** Pure: true when no stored config right still needs the 0.2.0 grant. */
+    public static function allGranted(array $storedRights): bool
+    {
+        foreach ($storedRights as $rights) {
+            if (self::upgradedConfigRight((int) $rights) !== null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * One-shot step (install marker config_rights_v020): CREATE|PURGE for every config UPDATE
+     * holder. Returns the read-back: true only when the rights now stored are all complete, so
+     * the caller sets its marker only after the effect is confirmed (hub §4).
+     */
+    public static function grantCreatePurgeToEditors(): bool
+    {
+        foreach (self::storedConfigRights() as $profilesId => $rights) {
+            $new = self::upgradedConfigRight($rights);
+            if ($new !== null) {
+                ProfileRight::updateProfileRights($profilesId, [RightDefinition::CONFIG => $new]);
+            }
+        }
+        return self::allGranted(self::storedConfigRights());
+    }
+
+    /** @return array<int, int> profiles_id => stored plugin_backupinfo_config bitmask */
+    private static function storedConfigRights(): array
     {
         global $DB;
 
-        $rows = $DB->request([
-            'FROM'  => 'glpi_profilerights',
-            'WHERE' => ['name' => RightDefinition::CONFIG],
-        ]);
-        foreach ($rows as $row) {
-            $new = self::upgradedConfigRight((int) $row['rights']);
-            if ($new !== null) {
-                ProfileRight::updateProfileRights((int) $row['profiles_id'], [RightDefinition::CONFIG => $new]);
-            }
+        $out = [];
+        foreach ($DB->request(['FROM' => 'glpi_profilerights', 'WHERE' => ['name' => RightDefinition::CONFIG]]) as $row) {
+            $out[(int) $row['profiles_id']] = (int) $row['rights'];
         }
+        return $out;
     }
 }

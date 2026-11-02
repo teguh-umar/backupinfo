@@ -21,14 +21,23 @@ $prof = (string) file_get_contents(BI_ROOT . '/src/Profile.php');
 check('grant reads the config right rows by name',
     (bool) preg_match("/'FROM'\s*=>\s*'glpi_profilerights',\s*'WHERE'\s*=>\s*\['name'\s*=>\s*RightDefinition::CONFIG\]/", $prof));
 check('grant writes through ProfileRight::updateProfileRights',
-    (bool) preg_match('/ProfileRight::updateProfileRights\(\(int\) \$row\[\'profiles_id\'\], \[RightDefinition::CONFIG => \$new\]\)/', $prof));
-check('grant uses the pure helper', str_contains($prof, 'self::upgradedConfigRight((int) $row[\'rights\'])'));
+    (bool) preg_match('/ProfileRight::updateProfileRights\(\$profilesId, \[RightDefinition::CONFIG => \$new\]\)/', $prof));
+check('grant uses the pure helper', str_contains($prof, 'self::upgradedConfigRight($rights)'));
+check('read-back re-reads the stored rights after writing',
+    (bool) preg_match('/updateProfileRights.*?return self::allGranted\(self::storedConfigRights\(\)\);/s', $prof));
+
+// Hub §4 (2026-11-02): a one-shot marker is set only after reading back the step's effect.
+check('read-back: all done when no row still needs the grant', BiProfile::allGranted([READ, READ | UPDATE | CREATE | PURGE, 0]) === true);
+check('read-back: not done while an UPDATE holder lacks CREATE/PURGE', BiProfile::allGranted([READ | UPDATE | CREATE | PURGE, READ | UPDATE]) === false);
+check('read-back: no rows is done', BiProfile::allGranted([]) === true);
+check('grant returns the read-back result', (bool) preg_match('/public static function grantCreatePurgeToEditors\(\): bool/', $prof)
+    && str_contains($prof, 'return self::allGranted('));
 
 $install = (string) file_get_contents(BI_ROOT . '/install/install.php');
 $guarded = preg_match('/if \(empty\(\$marker\[\'config_rights_v020\'\]\)\) \{(.*?)\r?\n    \}\r?\n/s', $install, $m) ? $m[1] : '';
 check('grant runs inside the config_rights_v020 marker block', str_contains($guarded, 'Profile::grantCreatePurgeToEditors()'));
-check('marker set after the grant', ($g = strpos($guarded, 'grantCreatePurgeToEditors')) !== false
-    && ($s = strpos($guarded, "'config_rights_v020' => 1")) !== false && $s > $g);
+check('marker set only when the read-back succeeded',
+    (bool) preg_match("/if \(\\\\GlpiPlugin\\\\Backupinfo\\\\Profile::grantCreatePurgeToEditors\(\)\) \{\s*Config::setConfigurationValues\(\\\$ctx, \['config_rights_v020' => 1\]\);/", $guarded));
 check('marker set only once in install', substr_count($install, "'config_rights_v020' =>") === 1);
 check('grant runs after Super-Admin seeding',
     ($a = strpos($install, 'Profile::install()')) !== false && ($b = strpos($install, 'grantCreatePurgeToEditors')) !== false && $b > $a);

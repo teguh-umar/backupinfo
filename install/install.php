@@ -141,8 +141,10 @@ function plugin_backupinfo_install()
         // One-shot (0.2.0): config UPDATE holders also get CREATE|PURGE (connection add/delete)
         $marker = Config::getConfigurationValues($ctx, ['config_rights_v020']);
         if (empty($marker['config_rights_v020'])) {
-            \GlpiPlugin\Backupinfo\Profile::grantCreatePurgeToEditors();
-            Config::setConfigurationValues($ctx, ['config_rights_v020' => 1]);
+            // Marker only after the read-back confirms the rights; otherwise the next upgrade retries.
+            if (\GlpiPlugin\Backupinfo\Profile::grantCreatePurgeToEditors()) {
+                Config::setConfigurationValues($ctx, ['config_rights_v020' => 1]);
+            }
         }
     }
 

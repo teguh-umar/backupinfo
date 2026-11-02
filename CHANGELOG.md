@@ -1,6 +1,12 @@
 # Changelog — Backup Info (backupinfo)
 
-## 0.2.0-rc1 — 2026-11-02 (release candidate, not yet confirmed on VM-GLPI)
+## 0.2.0-rc2 — 2026-11-02 (release candidate, not yet confirmed on VM-GLPI)
+
+- Upgrade step "CREATE/PURGE for config UPDATE holders" now reads the rights back and sets its
+  one-shot marker `config_rights_v020` only when every holder is complete; otherwise the next
+  upgrade retries (hub §4 rule of 2026-11-02). rc1 was never deployed.
+
+## 0.2.0-rc1 — 2026-11-02 (superseded by rc2, never deployed)
 
 Backup status from Vinchin on GLPI Computers. Spec:
 `docs/superpowers/specs/2026-10-28-backupinfo-vinchin-design.md`.
