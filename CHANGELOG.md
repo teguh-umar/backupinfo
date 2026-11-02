@@ -1,5 +1,12 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.2.0-rc7 — 2026-11-02 (release candidate)
+
+- Job schedule read in the shape this Vinchin really returns (Probe on the VM): weekly `days`
+  is a 7-flag weekday mask (`[0,0,0,0,1,0,0]`) and `frequency` a string (`"s2"` = every
+  2 weeks). rc6 read them as day numbers and as 1 week, so a two-week job showed 144 h;
+  it is now 336 h (RPO 360 h with the default grace). The documented shapes still work.
+
 ## 0.2.0-rc6 — 2026-11-02 (release candidate)
 
 - **RPO per backup object from the job's real schedule.** Job names do not follow the schedule
