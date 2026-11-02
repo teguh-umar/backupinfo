@@ -3,10 +3,14 @@
 namespace GlpiPlugin\Backupinfo\Vinchin;
 
 use GlpiPlugin\Backupinfo\Source\BackupSource;
+use GlpiPlugin\Backupinfo\Source\PartialFetch;
 use GlpiPlugin\Backupinfo\Source\ProbeableSource;
 
-final class VinchinSource implements BackupSource, ProbeableSource
+final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
 {
+    /** true when the last fetch() came from the job-history fallback (recent VM jobs only) */
+    private bool $partial = false;
+
     private const ITEMS_PATH   = '/backup_data/items/list';
     private const HISTORY_PATH = '/jobs/history';
 
@@ -35,8 +39,14 @@ final class VinchinSource implements BackupSource, ProbeableSource
         $this->vmNames = $vmNames;
     }
 
+    public function lastFetchWasPartial(): bool
+    {
+        return $this->partial;
+    }
+
     public function fetch(): array
     {
+        $this->partial = false;
         if ($this->useLogin) {
             $this->client->login();
         }
@@ -65,6 +75,7 @@ final class VinchinSource implements BackupSource, ProbeableSource
             }
         }
 
+        $this->partial = true;
         return JobHistoryMapper::map($rows, $names, time());
     }
 

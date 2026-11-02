@@ -63,4 +63,6 @@ $setup = (string) file_get_contents(BI_ROOT . '/setup.php');
 check('setup secures api_key and password', str_contains($setup, 'connections.api_key') && str_contains($setup, 'connections.password'));
 check('setup no longer secures api_secret/token', !str_contains($setup, 'connections.api_secret') && !str_contains($setup, 'connections.token'));
 
+check('secrets excluded from history', (new GlpiPlugin\Backupinfo\Connection())->getNonLoggedFields() === ['api_key', 'password']);
+
 done();

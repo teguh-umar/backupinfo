@@ -38,6 +38,12 @@ class Connection extends CommonDBTM
 
     public const SECRETS = ['api_key', 'password'];
 
+    /** Secrets never go to the item history (glpi_logs), not even encrypted. */
+    public function getNonLoggedFields(): array
+    {
+        return self::SECRETS;
+    }
+
     /**
      * Pure secret handling (encryptor injected, no GLPI needed).
      * Empty or absent secret keeps the stored value; "_clear_<field>" empties it;

@@ -55,7 +55,9 @@ def sha(data):
 def main():
     out = os.path.join(ROOT, 'backupinfov%s.zip' % version())
     if os.path.exists(out):
-        os.remove(out)
+        # A zip for this version may already be deployed: never replace it silently.
+        # Bump the version (rule 8: a fix is a new -rcN), or delete the old zip by hand.
+        sys.exit('%s already exists; bump the version in setup.php or remove it first' % os.path.basename(out))
     with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
         for rel in entries():
             z.write(os.path.join(ROOT, rel), TOP + '/' + rel)

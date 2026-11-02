@@ -5,6 +5,7 @@ namespace GlpiPlugin\Backupinfo\Sync;
 use GlpiPlugin\Backupinfo\Fields\FieldsBridge;
 use GlpiPlugin\Backupinfo\Matching\Matcher;
 use GlpiPlugin\Backupinfo\Source\BackupSource;
+use GlpiPlugin\Backupinfo\Source\PartialFetch;
 use GlpiPlugin\Backupinfo\Status;
 
 /**
@@ -24,15 +25,25 @@ class SyncService
     {
         $connId   = (int) $connectionRow['id'];
         $objects  = $source->fetch();          // a throw here changes nothing
-        $existing = $store->existing($connId);
+        $partial  = $source instanceof PartialFetch && $source->lastFetchWasPartial();
+        $existing = [];
+        foreach ($store->existing($connId) as $key => $row) {
+            $existing[self::key((string) $key)] = $row; // the DB unique key is case-insensitive
+        }
+
+        // A successful but empty answer while rows exist is far likelier a source problem than
+        // every backup vanishing at once; refuse rather than flip every asset to "no backup".
+        if ($objects === [] && $existing !== []) {
+            throw new \RuntimeException(sprintf('source returned no objects; kept %d stored rows', count($existing)));
+        }
 
         $stats    = ['fetched' => count($objects), 'matched' => 0, 'review' => 0, 'unmatched' => 0];
         $affected = [];
         $seen     = [];
 
         foreach ($objects as $o) {
-            $seen[$o->sourceKey] = true;
-            $old = $existing[$o->sourceKey] ?? null;
+            $seen[self::key($o->sourceKey)] = true;
+            $old = $existing[self::key($o->sourceKey)] ?? null;
 
             if ($old !== null && ($old['match_state'] ?? '') === 'manual') {
                 $match = ['state' => 'manual', 'itemtype' => (string) $old['itemtype'], 'items_id' => (int) $old['items_id']];
@@ -60,14 +71,14 @@ class SyncService
             }
 
             $store->upsert($connId, [
-                'source_key'     => $o->sourceKey,
-                'name'           => $o->name,
-                'ip'             => $o->ip,
-                'kind'           => $o->kind,
-                'job_name'       => $o->jobName,
+                'source_key'     => $old !== null ? (string) $old['source_key'] : self::cap($o->sourceKey, 255),
+                'name'           => self::cap($o->name, 255),
+                'ip'             => self::cap($o->ip, 255),
+                'kind'           => self::cap($o->kind, 50),
+                'job_name'       => self::cap($o->jobName, 255),
                 'last_backup'    => $o->lastBackup,
                 'restore_points' => $o->restorePoints,
-                'data_size'      => $o->dataSize,
+                'data_size'      => self::cap($o->dataSize, 64),
                 'abnormal_chain' => $o->abnormalChain ? 1 : 0,
                 'source_deleted' => $o->sourceDeleted ? 1 : 0,
                 'itemtype'       => (string) $match['itemtype'],
@@ -77,9 +88,9 @@ class SyncService
         }
 
         $stale = [];
-        foreach ($existing as $key => $row) {
+        foreach ($partial ? [] : $existing as $key => $row) {
             if (!isset($seen[$key])) {
-                $stale[] = (string) $key;
+                $stale[] = (string) $row['source_key'];
                 if ((int) $row['items_id'] > 0) {
                     $affected[(int) $row['items_id']] = true;
                 }
@@ -90,6 +101,17 @@ class SyncService
         }
 
         return $stats + ['affected' => array_map('intval', array_keys($affected))];
+    }
+
+    private static function key(string $sourceKey): string
+    {
+        return mb_strtolower($sourceKey);
+    }
+
+    /** Fit a value to its column (multibyte-safe) so one long value cannot fail the whole run. */
+    private static function cap(string $value, int $width): string
+    {
+        return mb_substr($value, 0, $width);
     }
 
     /**

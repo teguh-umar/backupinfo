@@ -3,6 +3,7 @@
 require __DIR__ . '/bootstrap.php';
 require BI_ROOT . '/src/Source/BackupObject.php';
 require BI_ROOT . '/src/Source/BackupSource.php';
+require BI_ROOT . '/src/Source/PartialFetch.php';
 require BI_ROOT . '/src/Matching/AssetLookup.php';
 require BI_ROOT . '/src/Matching/Matcher.php';
 require BI_ROOT . '/src/Status.php';
@@ -148,9 +149,48 @@ check('unchanged match not affected', !in_array(11, $r['affected'], true));
 // other connection untouched
 $store->upsert(2, ['source_key' => 'a', 'name' => 'n', 'ip' => '', 'kind' => 'vm', 'job_name' => '', 'last_backup' => 1, 'restore_points' => 0,
     'data_size' => '0', 'abnormal_chain' => 0, 'source_deleted' => 0, 'itemtype' => 'Computer', 'items_id' => 3, 'match_state' => 'matched']);
-$svc->run($conn, new FakeSource([]), $store, $m, 5200);
+// final review I2: an empty answer while rows exist is an error, never "everything is gone"
+$threw = false;
+try {
+    $svc->run($conn, new FakeSource([]), $store, $m, 5200);
+} catch (RuntimeException $e) {
+    $threw = str_contains($e->getMessage(), 'no objects');
+}
+check('empty fetch with stored rows throws', $threw);
+check('empty fetch keeps own rows', isset($store->rows['1|b']));
 check('other connection rows kept', isset($store->rows['2|a']));
-check('all own rows removed on empty fetch', !isset($store->rows['1|b']));
+$fresh = new MemStore();
+$r = $svc->run(['id' => 9], new FakeSource([]), $fresh, $m, 5200);
+check('empty fetch with no stored rows is fine', $r['fetched'] === 0);
+
+// final review I3: a partial fetch (fallback) upserts but never deletes
+final class PartialSource implements BackupSource, GlpiPlugin\Backupinfo\Source\PartialFetch
+{
+    public function __construct(public array $objects) {}
+    public function fetch(): array { return $this->objects; }
+    public function lastFetchWasPartial(): bool { return true; }
+}
+$store = new MemStore();
+$svc->run($conn, new FakeSource([obj('a', 'web1'), obj('d', 'db1', '', 'database')]), $store, $m, 6000);
+$r = $svc->run($conn, new PartialSource([obj('a', 'web1', '', 'vm', 7000)]), $store, $m, 7000);
+check('partial fetch keeps unseen rows', isset($store->rows['1|d']));
+check('partial fetch still upserts', $store->rows['1|a']['last_backup'] === 7000);
+
+// final review I3: source keys compare case-insensitively (the DB unique key does)
+$store = new MemStore();
+$svc->run($conn, new FakeSource([obj('VM-Case', 'web1')]), $store, $m, 8000);
+$svc->run($conn, new FakeSource([obj('vm-case', 'web1')]), $store, $m, 8100);
+check('case-only key change is not stale', count($store->rows) === 1);
+
+// final review I5: values are capped to their column widths
+$store = new MemStore();
+$long = new BackupObject('k', str_repeat('n', 300), str_repeat('1', 300), 'vm', str_repeat('j', 400), 1, 1, str_repeat('9', 100), false, false);
+$svc->run($conn, new FakeSource([$long]), $store, $m, 9000);
+$row = $store->rows['1|k'];
+check('job_name capped at 255', mb_strlen($row['job_name']) === 255);
+check('name capped at 255', mb_strlen($row['name']) === 255);
+check('ip capped at 255', mb_strlen($row['ip']) === 255);
+check('data_size capped at 64', mb_strlen($row['data_size']) === 64);
 
 // manual pin kept, not re-matched
 $store = new MemStore();

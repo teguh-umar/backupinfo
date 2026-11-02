@@ -5,6 +5,7 @@ require __DIR__ . '/bootstrap.php';
 require BI_ROOT . '/src/Source/BackupObject.php';
 require BI_ROOT . '/src/Source/BackupSource.php';
 require BI_ROOT . '/src/Source/ProbeableSource.php';
+require BI_ROOT . '/src/Source/PartialFetch.php';
 require BI_ROOT . '/src/Source/Registry.php';
 require BI_ROOT . '/src/Vinchin/Signer.php';
 require BI_ROOT . '/src/Vinchin/Transport.php';
@@ -193,5 +194,19 @@ check('empty vmNames after items failure throws', $e !== null && str_contains($e
 $conn = ['type' => 'vinchin', 'host' => 'h', 'auth_mode' => 'api_key', 'api_key' => 'ENC', 'username' => '', 'password' => '', 'verify_tls' => 1];
 check('registry builds VinchinSource', Registry::create($conn, fn(string $s): string => $s) instanceof VinchinSource);
 check('registry accepts vm-name provider', Registry::create($conn, fn(string $s): string => $s, fn() => []) instanceof VinchinSource);
+
+// final review I3/M1: fallback marks the fetch partial; joined job names are sorted
+$t = new FakeT();
+$t->queue = [okr(['total' => 1, 'rows' => [['item_name' => 'VM-A', 'module_type_des' => 'Virtualization', 'last_time' => 1, 'task_name' => 'Zeta'],
+    ['item_name' => 'VM-A', 'module_type_des' => 'Virtualization', 'last_time' => 2, 'task_name' => 'Alpha']]])];
+$src = new VinchinSource(new Client('h', $t, 'K'), false, fn() => ['VM-A']);
+$r = $src->fetch();
+check('items fetch is not partial', $src->lastFetchWasPartial() === false);
+check('merged job names sorted', $r[0]->jobName === 'Alpha, Zeta');
+$t = new FakeT();
+$t->queue = [bad(), okr(['total' => 1, 'rows' => [['job_name' => 'nightly VM-Q', 'job_type' => 'Backup', 'job_status' => 'Successful', 'start_time' => (time() - 60) * 1000]]])];
+$src = new VinchinSource(new Client('h', $t, 'K'), false, fn() => ['VM-Q']);
+$src->fetch();
+check('history fallback marks the fetch partial', $src->lastFetchWasPartial() === true);
 
 done();

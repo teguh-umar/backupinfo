@@ -40,6 +40,9 @@ check('age: negative clamps to 0', AssetTab::age(-10) === '0 min');
 check('size: bytes', AssetTab::size(512) === '512 B');
 check('size: GiB', AssetTab::size(3 * 1024 ** 3) === '3.0 GiB');
 check('size: zero is empty', AssetTab::size(0) === '');
+check('sizeText: vendor text kept', AssetTab::sizeText('12.5 GB') === '12.5 GB');
+check('sizeText: bare bytes formatted', AssetTab::sizeText('2048') === '2.0 KiB');
+check('sizeText: empty stays empty', AssetTab::sizeText('') === '');
 
 // ---- Search options on Computer, IDs 8370-8379 ----
 $hook = $read('hook.php');

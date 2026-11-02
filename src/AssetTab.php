@@ -118,7 +118,7 @@ final class AssetTab
                 . '<td>' . htmlescape((string) ($o['job_name'] ?? '')) . '</td>'
                 . '<td>' . ($last === null ? '-' : htmlescape(Html::convDateTime(date('Y-m-d H:i:s', (int) $last)) . ' (' . self::age($now - (int) $last) . ')')) . '</td>'
                 . '<td>' . (int) ($o['restore_points'] ?? 0) . '</td>'
-                . '<td>' . htmlescape(self::size((int) ($o['data_size'] ?? 0))) . '</td>'
+                . '<td>' . htmlescape(self::sizeText((string) ($o['data_size'] ?? ''))) . '</td>'
                 . '<td>' . htmlescape(implode(', ', $flags)) . '</td>'
                 . '</tr>';
         }
@@ -153,6 +153,13 @@ final class AssetTab
     }
 
     /** Pure: bytes in binary units; '' for 0 (unknown). */
+    /** Vinchin sends sizes as text ("12.5 GB"); show it as is, and format bare byte counts. */
+    public static function sizeText(string $value): string
+    {
+        $value = trim($value);
+        return ctype_digit($value) ? self::size((int) $value) : $value;
+    }
+
     public static function size(int $bytes): string
     {
         if ($bytes <= 0) {

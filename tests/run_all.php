@@ -5,7 +5,7 @@
 $ini = '';
 if (php_ini_loaded_file() === false) {
     $ini = '-d extension_dir=' . escapeshellarg((string) ini_get('extension_dir'));
-    foreach (['openssl', 'curl'] as $ext) {
+    foreach (['openssl', 'curl', 'mbstring'] as $ext) {
         if (extension_loaded($ext)) {
             $ini .= ' -d extension=' . $ext;
         }

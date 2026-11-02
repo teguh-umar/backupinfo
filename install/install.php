@@ -72,7 +72,7 @@ function plugin_backupinfo_install()
             `job_name` varchar(255) DEFAULT NULL,
             `last_backup` timestamp NULL DEFAULT NULL,
             `restore_points` int unsigned NOT NULL DEFAULT 0,
-            `data_size` bigint unsigned NOT NULL DEFAULT 0,
+            `data_size` varchar(64) NOT NULL DEFAULT '',
             `abnormal_chain` tinyint NOT NULL DEFAULT 0,
             `source_deleted` tinyint NOT NULL DEFAULT 0,
             `itemtype` varchar(100) DEFAULT NULL,

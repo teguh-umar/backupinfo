@@ -31,7 +31,7 @@ final class DbObjectStore implements ObjectStore
             'job_name'       => $row['job_name'],
             'last_backup'    => $row['last_backup'] === null ? null : date('Y-m-d H:i:s', (int) $row['last_backup']),
             'restore_points' => (int) $row['restore_points'],
-            'data_size'      => (int) $row['data_size'],
+            'data_size'      => (string) $row['data_size'],
             'abnormal_chain' => (int) $row['abnormal_chain'],
             'source_deleted' => (int) $row['source_deleted'],
             'itemtype'       => $row['itemtype'],

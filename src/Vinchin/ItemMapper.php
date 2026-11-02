@@ -87,6 +87,7 @@ final class ItemMapper
 
         $out = [];
         foreach ($vms as $vm) {
+            sort($vm['jobs'], SORT_STRING); // stable text whatever order Vinchin returns rows in
             $out[] = new BackupObject($vm['name'], $vm['name'], $vm['ip'], 'vm', implode(', ', $vm['jobs']),
                 $vm['time'], $vm['points'], $vm['size'], $vm['abnormal'], $vm['deleted']);
         }
