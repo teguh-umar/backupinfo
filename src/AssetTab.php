@@ -152,7 +152,6 @@ final class AssetTab
         return intdiv($seconds, 86400) . ' d';
     }
 
-    /** Pure: bytes in binary units; '' for 0 (unknown). */
     /** Vinchin sends sizes as text ("12.5 GB"); show it as is, and format bare byte counts. */
     public static function sizeText(string $value): string
     {
@@ -160,6 +159,7 @@ final class AssetTab
         return ctype_digit($value) ? self::size((int) $value) : $value;
     }
 
+    /** Pure: bytes in binary units; '' for 0 (unknown). */
     public static function size(int $bytes): string
     {
         if ($bytes <= 0) {
