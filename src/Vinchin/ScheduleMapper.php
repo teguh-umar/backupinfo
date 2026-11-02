@@ -3,8 +3,15 @@
 namespace GlpiPlugin\Backupinfo\Vinchin;
 
 /**
- * Job schedule interval from GET /jobs/{ID} time_strategy (Vinchin v9 RESTful API):
- * type 1 daily, 2 weekly (frequency = every N weeks, days = weekdays), 3 monthly (days = dates).
+ * Job schedule interval from GET /jobs/{ID} time_strategy. Format per the Vinchin v9 RESTful
+ * API doc (create/modify job and archive sections; the GET /jobs/{ID} section is out of date)
+ * and the VM sample of 2026-11-02:
+ * - type: 1 daily, 2 weekly, 3 monthly.
+ * - days: daily []; weekly a 7-flag mask, index 0 = Monday ([1,0,0,0,1,0,0] = Mon + Fri);
+ *   monthly a 31-flag mask, index 0 = day 1. Flags may be 0/1 or booleans.
+ * - frequency: weekly only, "s<N>" = every N weeks, s1-s20; blank = every week.
+ * - time_strategy_backup_type: "strategy" (scheduled), "oncetime", "manual" (no schedule).
+ *
  * The interval is the longest gap between two scheduled runs; with several strategies (full
  * weekly + incremental daily) the shortest wins, since any backup refreshes the last backup.
  * A strategy it does not understand makes the whole schedule unknown (null): it could be the
@@ -12,11 +19,15 @@ namespace GlpiPlugin\Backupinfo\Vinchin;
  */
 final class ScheduleMapper
 {
-    /** A bad frequency must not turn into a months-long RPO. */
-    public const MAX_WEEKS = 8;
+    /** Highest frequency the API doc allows ("s1-s20"); anything above is unknown. */
+    public const MAX_WEEKS = 20;
 
     public static function intervalHours(array $detail): ?int
     {
+        $kind = $detail['time_strategy_backup_type'] ?? 'strategy';
+        if ($kind !== 'strategy') {
+            return null; // one-time or manual job: no schedule to measure against
+        }
         $strategies = $detail['time_strategy'] ?? null;
         if (!is_array($strategies)) {
             return null;
@@ -56,11 +67,7 @@ final class ScheduleMapper
         return $best;
     }
 
-    /**
-     * The VM's Vinchin (sample 2026-11-02) differs from the API doc: weekly days is a 7-flag
-     * weekday mask ([0,0,0,0,1,0,0]) and frequency a string ("s2" = every 2 weeks). Both
-     * shapes are read; a list of day numbers still works.
-     */
+    /** Masks as documented; a list of day numbers (older doc wording) still works. */
     private static function strategyHours(array $s): ?int
     {
         $raw = $s['days'] ?? [];
@@ -68,7 +75,7 @@ final class ScheduleMapper
             case 1:
                 return 24;
             case 2:
-                $weeks = self::weeks($s['frequency'] ?? 1);
+                $weeks = self::weeks($s['frequency'] ?? '');
                 if ($weeks === null) {
                     return null;
                 }
@@ -84,16 +91,19 @@ final class ScheduleMapper
     }
 
     /**
-     * Weeks between runs from the known shapes only: 2, "2" or "s2" (seen on the VM for a
-     * two-week job). Any other shape ("d3", "m1", "") is null, never guessed (orchestrator
-     * 2026-11-02). Capped at MAX_WEEKS.
+     * Weeks between runs from the documented shapes only: "s<N>" (also N or "N"), and blank
+     * or null = every week. Anything else ("d3", "m1", "s21", 0) is null, never guessed or
+     * capped (orchestrator 2026-11-02).
      */
     private static function weeks(mixed $v): ?int
     {
+        if ($v === null || (is_string($v) && trim($v) === '')) {
+            return 1;
+        }
         if (is_string($v) && preg_match('/^\s*s?(\d+)\s*$/i', $v, $m) === 1) {
             $v = (int) $m[1];
         }
-        return is_int($v) && $v >= 1 ? min(self::MAX_WEEKS, $v) : null;
+        return is_int($v) && $v >= 1 && $v <= self::MAX_WEEKS ? $v : null;
     }
 
     /**
