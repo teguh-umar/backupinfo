@@ -20,6 +20,7 @@ final class FakeFieldsGateway implements FieldsGateway
     public array $creates = [];
     public array $logs = [];
     public bool $throwOnUpdate = false;
+    public bool $refuseUpdate = false;
 
     public function pluginActive(): bool { return $this->active; }
     public function containers(): array { return $this->containerRows; }
@@ -51,6 +52,9 @@ final class FakeFieldsGateway implements FieldsGateway
     {
         if ($this->throwOnUpdate) {
             throw new RuntimeException('boom on item ' . $data['items_id']);
+        }
+        if ($this->refuseUpdate) {
+            return false;
         }
         $this->updates[] = [$data, $itemtype];
         // Behave like the DB: store what was written so a second run sees it.
@@ -341,5 +345,14 @@ check('legacy stored label still resolves', (new FieldsBridge(cfg(['fields_conta
 $g = gw();
 $g->active = false;
 check('containerOptions() empty when Fields inactive', (new FieldsBridge(cfg(), $g))->containerOptions() === []);
+
+// Fields refuses the values (updateFieldsValues false): logged once, never silent (VM 2026-11-03)
+$g = gw();
+$g->refuseUpdate = true;
+$b = new FieldsBridge(cfg(), $g);
+$r1 = $b->write('Computer', 7, true, 'Vinchin · VM · J');
+$r2 = $b->write('Computer', 8, true, 'Vinchin · VM · J');
+check('refused update: write reports false', $r1 === false && $r2 === false);
+check('refused update: one warning per run naming the cause', count(array_filter($g->logs, static fn ($l) => str_contains($l, 'Fields refused'))) === 1);
 
 done();

@@ -179,12 +179,17 @@ class FieldsBridge
                 return false;
             }
 
-            return $this->gateway->update([
+            $ok = $this->gateway->update([
                 'plugin_fields_containers_id' => $container['id'],
                 'items_id'                    => $id,
                 'itemtype'                    => $itemtype,
                 'entities_id'                 => $entity,
             ] + $changes, $itemtype);
+            if (!$ok) {
+                // Fields' validateValues() said no: never silent (VM 2026-11-03).
+                $this->warn('refused', sprintf('Fields refused the values for %s #%d (container "%s", columns %s).', $itemtype, $id, $container['name'], implode(', ', array_keys($changes))));
+            }
+            return $ok;
         }, false);
     }
 

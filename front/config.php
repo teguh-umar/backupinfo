@@ -44,7 +44,7 @@ if (isset($_POST['sync_now'])) {
         }
     }
     if ($run['fields_error'] !== '') {
-        Session::addMessageAfterRedirect(__s('Fields update failed (see the backupinfo log).', 'backupinfo'), false, ERROR);
+        Session::addMessageAfterRedirect(htmlescape($run['fields_error']), false, ERROR);
     } elseif ($run['results'] !== []) {
         Session::addMessageAfterRedirect(htmlescape(sprintf(__('Computers updated in Fields: %d', 'backupinfo'), $run['touched'])));
     }
