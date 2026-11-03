@@ -1,5 +1,16 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.2.0-rc10 — 2026-11-03 (release candidate)
+
+rc9 checked on the VM: wrench, Setup, RPO 360 h for VM-TEST-02 with a search, asset status.
+- Probe without a keyword showed every row as "26 h (global)": it read the schedules of the
+  first five jobs in Vinchin's list, not of the sampled objects' jobs. Probe now reads the
+  whole job list (as the sync does) and the details of the sampled objects' jobs; the list is
+  not filtered by the keyword, since a VM name need not appear in its job name. The sync was
+  not affected.
+- Build: the zip is checked for local-only files (.graphifyignore, graphify, CLAUDE*.md,
+  dotfiles) and refused if any is found.
+
 ## 0.2.0-rc9 — 2026-11-03 (release candidate)
 
 - Setup > Plugins: the wrench opens the PGN Suite settings page on Backup Info's section
