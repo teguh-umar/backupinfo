@@ -197,6 +197,43 @@ $t->queue = [ok(['total' => 0, 'rows' => []]), ok(['total' => 0, 'rows' => []]),
 $s = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => []))->probe(5);
 check('job schedules: refused job list is one error line, other endpoints kept', count($s['errors']) === 1 && !isset($s['raw']['/jobs']) && isset($s['raw']['/jobs/history']));
 
+// Probe without a keyword (VM 2026-11-03): schedules for the jobs the sampled objects name,
+// not for the first jobs of the list (which showed every row as "global")
+$t = new FakeT();
+$t->queue = [
+    ok(['total' => 2, 'rows' => [
+        ['item_name' => 'VM-A', 'module_type_des' => 'Virtualization', 'last_time' => 1761600000, 'task_name' => 'J-A'],
+        ['item_name' => 'VM-B', 'module_type_des' => 'Virtualization', 'last_time' => 1761600000, 'task_name' => 'J-B'],
+    ]]),
+    ok(['total' => 0, 'rows' => []]),
+    ok(['total' => 3, 'rows' => [['job_name' => 'J-X', 'job_uuid' => 'ux'], ['job_name' => 'J-A', 'job_uuid' => 'ua'], ['job_name' => 'J-B', 'job_uuid' => 'ub']]]),
+    ok(['time_strategy_backup_type' => 'strategy', 'time_strategy' => [['mode' => 1, 'type' => 2, 'frequency' => 's2', 'days' => [0, 0, 0, 0, 1, 0, 0]]]]),
+    ok(['time_strategy' => [['mode' => 2, 'type' => 1, 'days' => []]]]),
+];
+$s = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => []))->probe(5);
+$byName = [];
+foreach ($s['objects'] as $o) {
+    $byName[$o->name] = $o;
+}
+check('sampled objects: job list is walked in full pages (limit 100), not one page of 5', str_contains($t->calls[2]['url'], 'limit=100'));
+check('sampled objects: details only for their jobs', count($t->calls) === 5
+    && str_contains($t->calls[3]['url'], '/jobs/ua?') && str_contains($t->calls[4]['url'], '/jobs/ub?'));
+check('sampled objects: schedules applied (336 h, 24 h)', ($byName['VM-A']->scheduleHours ?? null) === 336 && ($byName['VM-B']->scheduleHours ?? null) === 24);
+check('sampled objects: raw /jobs shows only their jobs', array_column($s['raw']['/jobs'] ?? [], 'job_name') === ['J-A', 'J-B']);
+check('sampled objects: no errors', $s['errors'] === []);
+
+// searching a VM whose job name does not contain it ("IT" -> "VM BACKUP_VM-WEB-01")
+$t = new FakeT();
+$t->queue = [
+    ok(['total' => 1, 'rows' => [['item_name' => 'IT', 'module_type_des' => 'Virtualization', 'last_time' => 1761600000, 'task_name' => 'VM BACKUP_VM-WEB-01']]]),
+    ok(['total' => 0, 'rows' => []]),
+    ok(['total' => 1, 'rows' => [['job_name' => 'VM BACKUP_VM-WEB-01', 'job_uuid' => 'uw']]]),
+    ok(['time_strategy' => [['type' => 1, 'days' => []]]]),
+];
+$s = (new VinchinSource(new Client('h', $t, 'K'), false, fn() => []))->probe(5, 'IT');
+check('search + objects: job list is not filtered by the keyword', !str_contains($t->calls[2]['url'], 'search=IT'));
+check('search + objects: the VM still gets its job schedule', ($s['objects'][0]->scheduleHours ?? null) === 24);
+
 // a schedule the plugin does not understand is reported, not guessed
 $t = new FakeT();
 $t->queue = [

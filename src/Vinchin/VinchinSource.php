@@ -99,6 +99,19 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
      */
     private function withSchedules(array $objects): array
     {
+        $s = $this->schedules('', 100, 5000, null, self::wantedJobs($objects));
+        $this->scheduleErrors = $s['errors'];
+        return array_map(static fn(BackupObject $o): BackupObject => $o->withSchedule(ScheduleMapper::forObject($o->jobName, $s['byJob'])), $objects);
+    }
+
+    /**
+     * Lowercased job names the objects name ("A, B" split, and the whole text).
+     *
+     * @param list<BackupObject> $objects
+     * @return array<string, true>
+     */
+    private static function wantedJobs(array $objects): array
+    {
         $wanted = [];
         foreach ($objects as $o) {
             foreach (explode(',', mb_strtolower($o->jobName)) as $name) {
@@ -106,12 +119,11 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
                     $wanted[trim($name)] = true;
                 }
             }
-            $wanted[mb_strtolower(trim($o->jobName))] = true;
+            if (trim($o->jobName) !== '') {
+                $wanted[mb_strtolower(trim($o->jobName))] = true;
+            }
         }
-
-        $s = $this->schedules('', 100, 5000, null, $wanted);
-        $this->scheduleErrors = $s['errors'];
-        return array_map(static fn(BackupObject $o): BackupObject => $o->withSchedule(ScheduleMapper::forObject($o->jobName, $s['byJob'])), $objects);
+        return $wanted;
     }
 
     /**
@@ -202,9 +214,18 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
         // Job schedules: the job list, then one detail call per job for its time_strategy
         // (type 1 daily, 2 weekly, 3 monthly; frequency; days) and next_time. Job names do not
         // follow the real schedule (user, 2026-11-02); the RPO per object comes from here.
-        $s = $this->schedules($search, $limit, $limit, $firstPageOnly, null);
+        // With sampled objects: the whole job list, details only for their jobs, as fetch()
+        // does; one page of the list showed every row as "global" (VM 2026-11-03). Without
+        // objects (e.g. a job that has no backup yet): one page of jobs and their details.
+        $wanted = self::wantedJobs($out['objects']);
+        $s = $wanted === []
+            ? $this->schedules($search, $limit, $limit, $firstPageOnly, null)
+            : $this->schedules('', 100, 5000, null, $wanted); // a VM name need not be in its job name
         if ($s['listed']) {
-            $out['raw'][self::JOBS_PATH]          = $s['jobs'];
+            $out['raw'][self::JOBS_PATH] = $wanted === [] ? $s['jobs'] : array_values(array_filter(
+                $s['jobs'],
+                static fn($job): bool => is_array($job) && isset($wanted[mb_strtolower(trim((string) ($job['job_name'] ?? '')))])
+            ));
             $out['raw'][self::JOBS_PATH . '/{ID}'] = $s['details'];
         }
         array_push($out['errors'], ...$s['errors']);
