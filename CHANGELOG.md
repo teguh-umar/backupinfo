@@ -1,5 +1,13 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.2.0-rc9 — 2026-11-03 (release candidate)
+
+- Setup > Plugins: the wrench opens the PGN Suite settings page on Backup Info's section
+  (`config_page`, user 2026-11-03).
+- Manual and one-time Vinchin jobs are named as such in the sync log and Probe ("manual job,
+  no schedule (global RPO used)") instead of "schedule not understood"; their rows show
+  "(global)".
+
 ## 0.2.0-rc8 — 2026-11-02 (release candidate)
 
 Job schedule format checked against the official Vinchin v9 RESTful API doc (create/modify
