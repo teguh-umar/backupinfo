@@ -67,6 +67,13 @@ def main():
         names = z.namelist()
         if any(not n.startswith(TOP + '/') for n in names):
             problems.append('entry outside the top folder')
+        # Second guard after the allowlist: local-only tooling never ships (.graphifyignore,
+        # graphify-out/, CLAUDE*.md, .claude/, any dotfile), wherever it sits.
+        local = [n for n in names
+                 if any(p.startswith('.') for p in n.split('/'))
+                 or re.search(r'graphify|(^|/)claude[^/]*\.md$', n, re.I)]
+        if local:
+            problems.append('local-only files: ' + ', '.join(local))
         for rel in REQUIRED:
             if TOP + '/' + rel not in names:
                 problems.append('missing ' + rel)
