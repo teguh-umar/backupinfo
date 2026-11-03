@@ -7,7 +7,7 @@
  * @license GPL-3.0-or-later
  */
 
-define('PLUGIN_BACKUPINFO_VERSION', '0.1.0-rc2');
+define('PLUGIN_BACKUPINFO_VERSION', '0.2.0');
 define('PLUGIN_BACKUPINFO_MIN_GLPI', '11.0.0');
 define('PLUGIN_BACKUPINFO_MAX_GLPI', '11.99.99');
 
@@ -49,8 +49,7 @@ function plugin_init_backupinfo()
     // Secured fields for API credentials
     $PLUGIN_HOOKS['secured_fields']['backupinfo'] = [
         'glpi_plugin_backupinfo_connections.api_key',
-        'glpi_plugin_backupinfo_connections.api_secret',
-        'glpi_plugin_backupinfo_connections.token',
+        'glpi_plugin_backupinfo_connections.password',
     ];
 
     \Plugin::registerClass(\GlpiPlugin\Backupinfo\Profile::class, ['addtabon' => ['Profile']]);
@@ -68,4 +67,14 @@ function plugin_init_backupinfo()
     }
     \GlpiPlugin\Pgnsuite\ConfigTab::register();
     $PLUGIN_HOOKS[\GlpiPlugin\Pgnsuite\ConfigTab::HOOK]['backupinfo'] = \GlpiPlugin\Backupinfo\SuiteConfig::class . '::section';
+    // Wrench in Setup > Plugins opens the shared settings page on this section (user, 2026-11-03)
+    $PLUGIN_HOOKS['config_page']['backupinfo'] = 'front/pgnsuite.settings.php?section=backupinfo';
+
+    // "Backup" section of the shared PGN Suite asset tab, on Computer only (hub §5).
+    // Search options on Computer: plugin_backupinfo_getAddSearchOptionsNew() in hook.php.
+    if (!class_exists(\GlpiPlugin\Pgnsuite\AssetTab::class, false)) {
+        require_once __DIR__ . '/lib/pgnsuite/AssetTab.php';
+    }
+    \GlpiPlugin\Pgnsuite\AssetTab::register(['Computer']);
+    $PLUGIN_HOOKS[\GlpiPlugin\Pgnsuite\AssetTab::HOOK]['backupinfo'] = \GlpiPlugin\Backupinfo\AssetTab::class . '::sections';
 }

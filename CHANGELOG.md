@@ -1,0 +1,162 @@
+# Changelog — Backup Info (backupinfo)
+
+## 0.2.0 — 2026-11-03
+
+Final release: the tree of 0.2.0-rc11, confirmed by the user on the VM (2026-11-03):
+Probe and RPO per job schedule, Backup Status = Yes and Backup Media on vm-test-02, no
+history on a second sync, values visible from other entities, wrench in Setup > Plugins,
+upgrades without errors. Changes since 0.1.0: see the 0.2.0-rc1 to rc11 entries below.
+
+## 0.2.0-rc11 — 2026-11-03 (release candidate)
+
+rc10 checked on the VM: Probe RPO per job (360 h two-week, 48 h daily, 192 h weekly).
+Fields were not written at all ("Computers updated in Fields: 0"):
+- Cause: "Backup Media - Content" is a **multiple** dropdown, which the plugin refused, and
+  that one problem stopped every write, Backup Status included.
+- A multiple dropdown media field is now supported: the sync writes one entry (the field is
+  filled by the sync), compared with the stored value so history is written only on change.
+- Backup Status is written whenever it can be, even if the media field has a problem; Setup
+  still lists the problem.
+- Sync now shows why Fields were not updated (the mapping problems) instead of only "0", and
+  a value Fields refuses is logged once per run with the item and columns.
+
+## 0.2.0-rc10 — 2026-11-03 (release candidate)
+
+rc9 checked on the VM: wrench, Setup, RPO 360 h for VM-TEST-02 with a search, asset status.
+- Probe without a keyword showed every row as "26 h (global)": it read the schedules of the
+  first five jobs in Vinchin's list, not of the sampled objects' jobs. Probe now reads the
+  whole job list (as the sync does) and the details of the sampled objects' jobs; the list is
+  not filtered by the keyword, since a VM name need not appear in its job name. The sync was
+  not affected.
+- Build: the zip is checked for local-only files (.graphifyignore, graphify, CLAUDE*.md,
+  dotfiles) and refused if any is found.
+
+## 0.2.0-rc9 — 2026-11-03 (release candidate)
+
+- Setup > Plugins: the wrench opens the PGN Suite settings page on Backup Info's section
+  (`config_page`, user 2026-11-03).
+- Manual and one-time Vinchin jobs are named as such in the sync log and Probe ("manual job,
+  no schedule (global RPO used)") instead of "schedule not understood"; their rows show
+  "(global)".
+
+## 0.2.0-rc8 — 2026-11-02 (release candidate)
+
+Job schedule format checked against the official Vinchin v9 RESTful API doc (create/modify
+job and archive sections; the GET /jobs/{ID} section is out of date):
+- `frequency` "s<N>" = every N weeks, s1–s20, full backups only; blank = every week (was
+  read as "unknown"). Anything else ("d3", "s21", 0) = unknown schedule: global RPO, an error
+  line naming the job in the sync log and Probe. Never guessed or capped.
+- `days`: weekly 7-flag mask with index 0 = Monday, monthly 31-flag mask; 0/1 or booleans.
+- `time_strategy_backup_type` "oncetime" / "manual": no schedule (global RPO).
+- Any strategy not understood makes the job's whole schedule unknown (it could be the
+  shorter one).
+
+## 0.2.0-rc7 — 2026-11-02 (release candidate)
+
+- Job schedule read in the shape this Vinchin really returns (Probe on the VM): weekly `days`
+  is a 7-flag weekday mask (`[0,0,0,0,1,0,0]`) and `frequency` a string (`"s2"` = every
+  2 weeks). rc6 read them as day numbers and as 1 week, so a two-week job showed 144 h;
+  it is now 336 h (RPO 360 h with the default grace). The documented shapes still work.
+
+## 0.2.0-rc6 — 2026-11-02 (release candidate)
+
+- **RPO per backup object from the job's real schedule.** Job names do not follow the schedule
+  (a "(WEEKLY)" job runs every two weeks), so the sync reads each job's `time_strategy` from
+  Vinchin (`GET /jobs`, then `GET /jobs/{ID}` for the jobs the objects name): daily 24 h,
+  every N weeks, weekdays, month days; the longest gap between runs is the interval, and with
+  several strategies (full weekly + incremental daily) the shortest wins.
+- A backup is **expired** when older than *schedule + grace*. Grace is set in Setup
+  (default 24 h, 0–168). The existing RPO (default 26 h) applies only when a job's schedule
+  is unknown.
+- Asset tab and Probe show the RPO per row and where it came from:
+  `360 h (schedule 336 h + 24 h)` or `26 h (global)`. Coverage states the rule.
+- A schedule that cannot be read never fails the sync: that object uses the global RPO, and
+  the sync log says how many schedules were not read.
+- Fields "Backup Status" is unchanged (Yes for protected and expired).
+- Upgrade: new column `objects.schedule_hours` (NULL = unknown), new setting `rpo_grace_hours`.
+
+## 0.2.0-rc5 — 2026-11-02 (release candidate)
+
+- Probe page: Backup Info sub-nav (Coverage, Backup objects, Probe) now shows on the Probe page
+  too; before, opening Probe hid the other tabs.
+- Probe page: job schedules. One page of `GET /jobs` (with the search keyword), then
+  `GET /jobs/{ID}` per job, shown raw: `time_strategy` (type 1 daily, 2 weekly, 3 monthly;
+  `frequency`; `days`) and `next_time`. Job names do not follow the real schedule (a "(WEEKLY)"
+  job runs every two weeks), so the RPO per job will be read from this, once the VM sample
+  shows the fields. No RPO change in this build.
+
+## 0.2.0-rc4 — 2026-11-02 (release candidate)
+
+- Probe page: optional **Search** (VM or job name). Vinchin's `search` is sent to both endpoints,
+  so the newest runs of one job, with their status, can be checked with API access only
+  (no Vinchin console needed). Needed to settle the RPO for WEEKLY jobs.
+
+## 0.2.0-rc3 — 2026-11-02 (user: Setup placement and filter OK on the VM)
+
+From the first Probe run on the VM (rc2):
+- **Connections are managed in Setup**: list, add, edit and delete inside Backup Info's section
+  of the PGN Suite settings page. The "Connections" entry is gone from the Tools ICT menu; old
+  `connection.php` / `connection.form.php` links forward to that section.
+- Vinchin's `"ip": "--"` (and `-`, `N/A`) is read as "no IP", so it never takes part in matching.
+- Probe's job-history sample is the newest rows (`sort=start_time`, `order=desc`, one retry
+  without sort); before, Vinchin returned the oldest rows.
+- Backup objects page: the state filter is a bordered button group (the pills had no visible
+  borders and an unreadable active state).
+
+## 0.2.0-rc2 — 2026-11-02 (superseded by rc3; Probe checked on the VM)
+
+- Upgrade step "CREATE/PURGE for config UPDATE holders" now reads the rights back and sets its
+  one-shot marker `config_rights_v020` only when every holder is complete; otherwise the next
+  upgrade retries (hub §4 rule of 2026-11-02). rc1 was never deployed.
+
+## 0.2.0-rc1 — 2026-11-02 (superseded by rc2, never deployed)
+
+Backup status from Vinchin on GLPI Computers. Spec:
+`docs/superpowers/specs/2026-10-28-backupinfo-vinchin-design.md`.
+
+### Added
+- **Connections** to backup systems (Vinchin now; the source contract is ready for Sangfor SCP and
+  Hyper-V). API key and password are encrypted with GLPIKey, never shown again in the form, never
+  written to the item history.
+- **Vinchin client** speaking the console protocol: signed requests (AES `sign` + `timestamp`),
+  CSRF token rotation with retry on code 910087, API-key or login (RSA password) mode, paging.
+  Source data: Backup Object list; job history as fallback.
+- **Matching** of backup objects to Computers: VM name first, then IP; ambiguous results go to
+  review, never to the first hit. Manual pin / unpin on the **Backup objects** page.
+- **Status** per Computer: protected (last backup within the RPO, default 26 h), expired, none.
+- **Fields plugin integration**: writes "Backup Status" (Yes for protected and expired) and
+  "Backup Media - Content", only when the value changes; reads "Wajib Backup" for the backup
+  policy and never writes it. Container and fields are chosen by name in Setup.
+- **Backup policy and coverage**: mandatory Computers from the "Wajib Backup" field or a manual
+  list; **Coverage** page in Tools ICT.
+- **Backup** section in the shared Tools ICT asset tab (order 100); search options 8370–8372 on
+  Computer.
+- **Setup** section on the PGN Suite settings page: connections, RPO (1–720 h), policy mode,
+  Fields mapping, Sync now.
+- **Probe** page (config UPDATE): a read-only five-row sample per endpoint from one connection,
+  showing the raw rows (credentials masked), the plugin's reading and the match result.
+- Automatic action **Sync** (hourly).
+
+### Changed
+- Rights: `plugin_backupinfo_config` now offers READ, UPDATE, CREATE, PURGE. On upgrade, profiles
+  that held config UPDATE receive CREATE and PURGE once.
+- Connections table: `host`, `auth_mode`, `username`, `password`, `verify_tls`, sync status
+  columns; `api_url` is copied into `host`; `api_url`, `api_secret`, `token`, `site` are dropped.
+
+### Removed
+- rc1 pages Dashboard, Jobs, Storage, Report, Assets and their tables (dropped once on upgrade).
+  Excel import is kept in the tree but not wired.
+
+### Safety
+- A failing connection never deletes its stored objects; an empty answer while objects are stored
+  is treated as an error; a job-history fallback run never deletes objects.
+- Objects of inactive or deleted connections stop counting as backups.
+
+### Needs confirmation on the VM
+Fields writes under cron (history only on real changes, dropdown entries visible to all
+entities), connection add/delete for a non-Super-Admin profile, upgrade from 0.1.0-rc2
+(markers, dropped tables, rights), Probe page against the real Vinchin.
+
+## 0.1.0-rc2 — 2026-10-28
+- Zip with a top folder; duplicate install functions removed; missing `use` imports; Profile
+  rights matrix; settings section returned to the shared page; ConfigTab r5.

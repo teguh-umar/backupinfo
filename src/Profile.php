@@ -42,7 +42,9 @@ class Profile extends \Profile
         $rights = [
             [
                 'itemtype' => '',
-                'rights'   => [READ => __('Read'), UPDATE => __('Update')],
+                // CREATE/PURGE: add and delete connections. Offered here so saving the
+                // matrix never strips them from a profile (Super-Admin is seeded with all).
+                'rights'   => [READ => __('Read'), UPDATE => __('Update'), CREATE => __('Create'), PURGE => __('Delete permanently')],
                 'label'    => __('Configure Backup Info', 'backupinfo'),
                 'field'    => RightDefinition::CONFIG,
             ],
@@ -96,5 +98,57 @@ class Profile extends \Profile
                 ProfileRight::updateProfileRights($profiles_id, [$right => $value]);
             }
         }
+    }
+
+    /**
+     * Pure: the config right a profile gets on the 0.2.0 upgrade, or null to leave it.
+     * Whoever could edit the config in rc2 (UPDATE) may now also add and delete connections.
+     */
+    public static function upgradedConfigRight(int $current): ?int
+    {
+        if (($current & UPDATE) === 0) {
+            return null;
+        }
+        $new = $current | CREATE | PURGE;
+        return $new === $current ? null : $new;
+    }
+
+    /** Pure: true when no stored config right still needs the 0.2.0 grant. */
+    public static function allGranted(array $storedRights): bool
+    {
+        foreach ($storedRights as $rights) {
+            if (self::upgradedConfigRight((int) $rights) !== null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * One-shot step (install marker config_rights_v020): CREATE|PURGE for every config UPDATE
+     * holder. Returns the read-back: true only when the rights now stored are all complete, so
+     * the caller sets its marker only after the effect is confirmed (hub §4).
+     */
+    public static function grantCreatePurgeToEditors(): bool
+    {
+        foreach (self::storedConfigRights() as $profilesId => $rights) {
+            $new = self::upgradedConfigRight($rights);
+            if ($new !== null) {
+                ProfileRight::updateProfileRights($profilesId, [RightDefinition::CONFIG => $new]);
+            }
+        }
+        return self::allGranted(self::storedConfigRights());
+    }
+
+    /** @return array<int, int> profiles_id => stored plugin_backupinfo_config bitmask */
+    private static function storedConfigRights(): array
+    {
+        global $DB;
+
+        $out = [];
+        foreach ($DB->request(['FROM' => 'glpi_profilerights', 'WHERE' => ['name' => RightDefinition::CONFIG]]) as $row) {
+            $out[(int) $row['profiles_id']] = (int) $row['rights'];
+        }
+        return $out;
     }
 }

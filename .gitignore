@@ -5,3 +5,6 @@
 
 # reference app from the user (Python backup monitor); study only, never shipped
 python/
+
+# user reference docs (vendor API docs); study only, never shipped
+/Source/

@@ -1,11 +1,14 @@
 <?php
 
+/**
+ * Connections are managed in Backup Info's section on the PGN Suite settings page (Setup);
+ * this old list URL forwards there.
+ */
+
+use GlpiPlugin\Backupinfo\RightDefinition;
+use GlpiPlugin\Backupinfo\SuiteConfig;
+
 include('../../../inc/includes.php');
+Session::checkRight(RightDefinition::CONFIG, READ);
 
-Session::checkRight('plugin_backupinfo_config', READ);
-
-Html::header('Backup Info - Connections', $_SERVER['PHP_SELF'], 'plugins', 'backupinfo', 'connection');
-
-Search::show('GlpiPlugin\\Backupinfo\\Connection');
-
-Html::footer();
+Html::redirect(SuiteConfig::sectionUrl());

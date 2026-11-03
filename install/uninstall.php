@@ -5,6 +5,8 @@ function plugin_backupinfo_uninstall()
     global $DB;
 
     $tables = [
+        'glpi_plugin_backupinfo_policies',
+        'glpi_plugin_backupinfo_objects',
         'glpi_plugin_backupinfo_mappings',
         'glpi_plugin_backupinfo_storages',
         'glpi_plugin_backupinfo_jobs',
@@ -17,6 +19,12 @@ function plugin_backupinfo_uninstall()
             $DB->doQuery("DROP TABLE IF EXISTS `$table`");
         }
     }
+
+    $cfg = Config::getConfigurationValues('plugin:backupinfo');
+    if ($cfg !== []) {
+        Config::deleteConfigurationValues('plugin:backupinfo', array_keys($cfg));
+    }
+    CronTask::unregister('backupinfo');
 
     $DB->doQuery("DELETE FROM `glpi_displaypreferences` WHERE `itemtype` LIKE 'GlpiPlugin\\\\Backupinfo\\\\%'");
     $DB->doQuery("DELETE FROM `glpi_notepads` WHERE `itemtype` LIKE 'GlpiPlugin\\\\Backupinfo\\\\%'");

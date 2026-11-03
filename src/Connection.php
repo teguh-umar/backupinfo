@@ -3,9 +3,11 @@
 namespace GlpiPlugin\Backupinfo;
 
 use CommonDBTM;
-use Session;
-use Html;
 use Dropdown;
+use GLPIKey;
+use GlpiPlugin\Backupinfo\Source\Registry;
+use Html;
+use Session;
 
 class Connection extends CommonDBTM
 {
@@ -34,37 +36,104 @@ class Connection extends CommonDBTM
         return $ong;
     }
 
+    public const SECRETS = ['api_key', 'password'];
+
+    /** Secrets never go to the item history (glpi_logs), not even encrypted. */
+    public function getNonLoggedFields(): array
+    {
+        return self::SECRETS;
+    }
+
+    /**
+     * Pure secret handling (encryptor injected, no GLPI needed).
+     * Empty or absent secret keeps the stored value; "_clear_<field>" empties it;
+     * anything else is encrypted. The _clear_* helper keys never reach the DB.
+     *
+     * @param array<string, mixed> $input
+     * @param array<string, mixed> $current stored (already encrypted) row values
+     * @param callable(string): string $encrypt
+     * @return array<string, mixed>
+     */
+    public static function prepareSecrets(array $input, array $current, callable $encrypt): array
+    {
+        foreach (self::SECRETS as $field) {
+            $clear = !empty($input['_clear_' . $field]);
+            unset($input['_clear_' . $field]);
+            $submitted = (string) ($input[$field] ?? '');
+            if ($clear) {
+                $input[$field] = '';
+            } elseif ($submitted === '') {
+                $input[$field] = (string) ($current[$field] ?? '');
+            } else {
+                $input[$field] = $encrypt($submitted);
+            }
+        }
+        return $input;
+    }
+
+    /** Decrypted secret ('' if unset). Core never decrypts on read. */
+    public function secret(string $field): string
+    {
+        if (!in_array($field, self::SECRETS, true)) {
+            return '';
+        }
+        $raw = (string) ($this->fields[$field] ?? '');
+        return $raw === '' ? '' : (string) ((new GLPIKey())->decrypt($raw) ?? '');
+    }
+
+    private function secretInput(string $field, string $label): void
+    {
+        $stored = ((string) ($this->fields[$field] ?? '')) !== '';
+        echo Html::input($field, [
+            'type'         => 'password',
+            'value'        => '',
+            'autocomplete' => 'new-password',
+            'placeholder'  => $stored ? __('set / unchanged', 'backupinfo') : '',
+        ]);
+        if ($stored) {
+            echo "<label class='ms-2'><input type='checkbox' name='_clear_" . $field . "' value='1'> "
+                . __('clear', 'backupinfo') . "</label>";
+        }
+    }
+
     public function showForm($ID, array $options = [])
     {
         $this->initForm($ID, $options);
         $this->showFormHeader($options);
 
         echo "<tr class='tab_bg_1'><td>" . __('Name') . "</td><td>";
-        echo Html::input('name', ['value' => $this->fields['name']]);
+        echo Html::input('name', ['value' => $this->fields['name'] ?? '']);
         echo "</td><td>" . __('Active') . "</td><td>";
-        Dropdown::showYesNo('is_active', $this->fields['is_active']);
+        Dropdown::showYesNo('is_active', $this->fields['is_active'] ?? 1);
         echo "</td></tr>";
 
         echo "<tr class='tab_bg_1'><td>" . __('Type') . "</td><td>";
-        Dropdown::showFromArray('type', ['vinchin' => 'Vinchin', 'veritas' => 'Veritas', 'excel' => 'Excel Import'], ['value' => $this->fields['type']]);
-        echo "</td><td>" . __('Site') . "</td><td>";
-        echo Html::input('site', ['value' => $this->fields['site']]);
+        Dropdown::showFromArray('type', Registry::types(), ['value' => $this->fields['type'] ?? 'vinchin']);
+        echo "</td><td>" . __('Verify TLS certificate', 'backupinfo') . "</td><td>";
+        Dropdown::showYesNo('verify_tls', $this->fields['verify_tls'] ?? 1);
         echo "</td></tr>";
 
-        echo "<tr class='tab_bg_1'><td>API URL</td><td>";
-        echo Html::input('api_url', ['value' => $this->fields['api_url'], 'size' => 60]);
-        echo "</td><td>API Key</td><td>";
-        echo Html::input('api_key', ['value' => $this->fields['api_key'], 'size' => 40]);
+        echo "<tr class='tab_bg_1'><td>" . __('Host', 'backupinfo') . "</td><td>";
+        echo Html::input('host', ['value' => $this->fields['host'] ?? '', 'size' => 60]);
+        echo "</td><td>" . __('Authentication', 'backupinfo') . "</td><td>";
+        Dropdown::showFromArray('auth_mode', [
+            'api_key' => __('API key', 'backupinfo'),
+            'login'   => __('Username and password', 'backupinfo'),
+        ], ['value' => $this->fields['auth_mode'] ?? 'api_key']);
         echo "</td></tr>";
 
-        echo "<tr class='tab_bg_1'><td>API Secret</td><td>";
-        echo Html::input('api_secret', ['value' => $this->fields['api_secret'], 'size' => 40]);
-        echo "</td><td>Token</td><td>";
-        echo Html::input('token', ['value' => $this->fields['token'], 'size' => 60]);
+        echo "<tr class='tab_bg_1'><td>" . __('API key', 'backupinfo') . "</td><td>";
+        $this->secretInput('api_key', 'API key');
+        echo "</td><td>" . __('Username', 'backupinfo') . "</td><td>";
+        echo Html::input('username', ['value' => $this->fields['username'] ?? '']);
         echo "</td></tr>";
+
+        echo "<tr class='tab_bg_1'><td>" . __('Password') . "</td><td>";
+        $this->secretInput('password', 'Password');
+        echo "</td><td></td><td></td></tr>";
 
         echo "<tr class='tab_bg_1'><td>" . __('Comments') . "</td><td colspan='3'>";
-        echo "<textarea name='comment' cols='80' rows='4'>" . $this->fields['comment'] . "</textarea>";
+        echo "<textarea name='comment' cols='80' rows='4'>" . htmlescape($this->fields['comment'] ?? '') . "</textarea>";
         echo "</td></tr>";
 
         $this->showFormButtons($options);
@@ -73,29 +142,11 @@ class Connection extends CommonDBTM
 
     public function prepareInputForAdd($input)
     {
-        if (isset($input['api_key']) && $input['api_key'] !== '') {
-            $input['api_key'] = (new \GLPIKey())->encrypt($input['api_key']);
-        }
-        if (isset($input['api_secret']) && $input['api_secret'] !== '') {
-            $input['api_secret'] = (new \GLPIKey())->encrypt($input['api_secret']);
-        }
-        if (isset($input['token']) && $input['token'] !== '') {
-            $input['token'] = (new \GLPIKey())->encrypt($input['token']);
-        }
-        return $input;
+        return self::prepareSecrets($input, [], fn(string $s): string => (new GLPIKey())->encrypt($s));
     }
 
     public function prepareInputForUpdate($input)
     {
-        if (isset($input['api_key']) && $input['api_key'] !== '' && strpos($input['api_key'], '::') !== 0) {
-            $input['api_key'] = (new \GLPIKey())->encrypt($input['api_key']);
-        }
-        if (isset($input['api_secret']) && $input['api_secret'] !== '' && strpos($input['api_secret'], '::') !== 0) {
-            $input['api_secret'] = (new \GLPIKey())->encrypt($input['api_secret']);
-        }
-        if (isset($input['token']) && $input['token'] !== '' && strpos($input['token'], '::') !== 0) {
-            $input['token'] = (new \GLPIKey())->encrypt($input['token']);
-        }
-        return $input;
+        return self::prepareSecrets($input, $this->fields, fn(string $s): string => (new GLPIKey())->encrypt($s));
     }
 }
