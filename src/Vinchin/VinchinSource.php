@@ -2,12 +2,13 @@
 
 namespace GlpiPlugin\Backupinfo\Vinchin;
 
+use GlpiPlugin\Backupinfo\Source\AuditProbeableSource;
 use GlpiPlugin\Backupinfo\Source\BackupObject;
 use GlpiPlugin\Backupinfo\Source\BackupSource;
 use GlpiPlugin\Backupinfo\Source\PartialFetch;
 use GlpiPlugin\Backupinfo\Source\ProbeableSource;
 
-final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
+final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeableSource, PartialFetch
 {
     /** true when the last fetch() came from the job-history fallback (recent VM jobs only) */
     private bool $partial = false;
@@ -230,6 +231,94 @@ final class VinchinSource implements BackupSource, ProbeableSource, PartialFetch
         }
         array_push($out['errors'], ...$s['errors']);
         $out['objects'] = array_map(static fn(BackupObject $o): BackupObject => $o->withSchedule(ScheduleMapper::forObject($o->jobName, $s['byJob'])), $out['objects']);
+
+        return $out;
+    }
+
+    /**
+     * Audit endpoints of the Vinchin v9 API, one page each (stage 1, user 2026-11-03). Sort
+     * fields are required by these list calls; where the doc gives none, known names are
+     * tried in turn. verify/virus history need a restore point (timepoint_uuid of a sampled
+     * item) and copy history a copy or replica job: without one they are skipped, said so.
+     */
+    public function probeAudit(int $limit, string $search = ''): array
+    {
+        $out = ['raw' => [], 'errors' => []];
+
+        if ($this->useLogin) {
+            try {
+                $this->client->login();
+            } catch (\RuntimeException $e) {
+                $out['errors'][] = 'login: ' . $e->getMessage();
+                return $out;
+            }
+        }
+
+        $firstPageOnly = static fn(): bool => true;
+        $sample = function (string $label, string $path, array $params, array $sorts = [null]) use (&$out, $limit, $firstPageOnly): void {
+            $last = null;
+            foreach ($sorts as $sort) {
+                try {
+                    $out['raw'][$label] = $this->client->getPaged($path, ($sort === null ? [] : ['sort' => $sort]) + $params, $limit, $limit, $firstPageOnly);
+                    return;
+                } catch (\RuntimeException $e) {
+                    $last = $e;
+                }
+            }
+            $out['errors'][] = $last->getMessage();
+        };
+        $desc = ['search' => $search, 'order' => 'desc'];
+
+        $sample('failed runs (' . self::HISTORY_PATH . ', job_status 4)', self::HISTORY_PATH, $desc + ['job_status' => 4], ['start_time', null]);
+        $sample('/alarm/job', '/alarm/job', $desc, ['alarm_time']);
+        $sample('/alarm/system', '/alarm/system', $desc, ['alarm_time']);
+        $sample('/logs/job', '/logs/job', $desc, ['op_time']);
+        $sample('/logs/system', '/logs/system', $desc, ['create_time', 'op_time']);
+        $sample('/backupmanager/report/vm', '/backupmanager/report/vm', []);
+        $sample('/industry/report', '/industry/report', ['search' => $search]);
+
+        // Verification and virus scan are per restore point: the newest one of a sampled item.
+        $timepoint = '';
+        try {
+            foreach ($this->client->postPaged(self::ITEMS_PATH, ['search' => $search] + self::ITEMS_FILTER, $limit, $limit, $firstPageOnly) as $row) {
+                $timepoint = is_array($row) ? trim((string) ($row['timepoint_uuid'] ?? '')) : '';
+                if ($timepoint !== '') {
+                    break;
+                }
+            }
+        } catch (\RuntimeException $e) {
+            $out['errors'][] = $e->getMessage();
+        }
+        foreach (['/backup_data/verify_history', '/backup_data/virus_history'] as $path) {
+            if ($timepoint === '') {
+                $out['errors'][] = $path . ': skipped, no restore point (timepoint_uuid) in the sample';
+                continue;
+            }
+            try {
+                $data = $this->client->get($path, ['timepoint_uuid' => $timepoint]);
+                $out['raw'][$path] = is_array($data['rows'] ?? null) ? array_values($data['rows']) : (is_array($data) ? [$data] : []);
+            } catch (\RuntimeException $e) {
+                $out['errors'][] = $e->getMessage();
+            }
+        }
+
+        // Copy history (offsite copy, 3-2-1) is per copy or replica job.
+        try {
+            $copyJob = '';
+            foreach ($this->client->getPaged(self::JOBS_PATH, ['search' => ''], 100, 100, $firstPageOnly) as $job) {
+                if (is_array($job) && preg_match('/copy|replica/i', (string) ($job['job_type'] ?? '')) === 1) {
+                    $copyJob = (string) ($job['job_uuid'] ?? '');
+                    break;
+                }
+            }
+            if ($copyJob === '') {
+                $out['errors'][] = '/copy/job/history: skipped, no copy or replica job in the job list';
+            } else {
+                $sample('/copy/job/history', '/copy/job/history', ['task_uuid' => $copyJob]);
+            }
+        } catch (\RuntimeException $e) {
+            $out['errors'][] = $e->getMessage();
+        }
 
         return $out;
     }

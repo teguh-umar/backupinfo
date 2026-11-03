@@ -3,6 +3,7 @@
 namespace GlpiPlugin\Backupinfo;
 
 use GlpiPlugin\Backupinfo\Matching\Matcher;
+use GlpiPlugin\Backupinfo\Source\AuditProbeableSource;
 use GlpiPlugin\Backupinfo\Source\BackupSource;
 use GlpiPlugin\Backupinfo\Source\ProbeableSource;
 use GlpiPlugin\Backupinfo\Source\Registry;
@@ -47,6 +48,36 @@ final class Probe
             return self::fromSource(null, $m, $limit, [$e->getMessage()]);
         }
         return self::fromSource($source, $m, $limit, [], $search);
+    }
+
+    /**
+     * Read-only sample of the audit endpoints (failed runs, alarms, logs, verification,
+     * copies) from one connection, credentials masked.
+     *
+     * @return array{raw: array<string, list<array>>, errors: list<string>}
+     */
+    public static function runAudit(array $connectionRow, callable $decrypt, int $limit = self::LIMIT, string $search = ''): array
+    {
+        try {
+            $source = Registry::create($connectionRow, $decrypt, static fn(): array => []);
+        } catch (\InvalidArgumentException $e) {
+            return ['raw' => [], 'errors' => [$e->getMessage()]];
+        }
+        return self::fromAuditSource($source, $limit, $search);
+    }
+
+    /** Testable core of runAudit(). */
+    public static function fromAuditSource(BackupSource $source, int $limit = self::LIMIT, string $search = ''): array
+    {
+        if (!$source instanceof AuditProbeableSource) {
+            return ['raw' => [], 'errors' => ['This source type has no audit probe yet']];
+        }
+        $sample = $source->probeAudit($limit, $search);
+        $raw    = [];
+        foreach ($sample['raw'] as $label => $rows) {
+            $raw[$label] = array_map([self::class, 'redact'], $rows);
+        }
+        return ['raw' => $raw, 'errors' => $sample['errors']];
     }
 
     /** Search keyword from the form: trimmed, at most 100 characters. */

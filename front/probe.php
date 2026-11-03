@@ -44,8 +44,25 @@ echo '</div>';
 echo '<div class="flex-grow-1"><label class="form-label" for="backupinfo-probe-search">' . __s('Search (VM or job name, optional)', 'backupinfo') . '</label>'
     . '<input type="text" class="form-control" id="backupinfo-probe-search" name="search" maxlength="100" value="' . htmlescape($search) . '"></div>';
 echo Html::submit(__('Take sample', 'backupinfo'), ['name' => 'probe', 'class' => 'btn btn-primary']);
+// Stage 1 of the audit evidence work: what this API key may read (user, 2026-11-03)
+echo Html::submit(__('Sample audit endpoints', 'backupinfo'), ['name' => 'probe_audit', 'class' => 'btn btn-outline-secondary']);
 Html::closeForm();
 echo '</div></div>';
+
+if (isset($_POST['probe_audit']) && isset($connections[$selected])) {
+    $audit = Probe::runAudit($connections[$selected], Cron::decryptor(), Probe::LIMIT, $search);
+    echo '<div class="alert alert-info">' . __s('Audit endpoints: failed runs, alarms, logs, restore verification, virus scan and copy history. A warning below means this API key may not read that endpoint, or there was nothing to ask it about.', 'backupinfo') . '</div>';
+    foreach ($audit['errors'] as $error) {
+        echo '<div class="alert alert-warning">' . htmlescape($error) . '</div>';
+    }
+    foreach ($audit['raw'] as $endpoint => $rows) {
+        echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">'
+            . htmlescape(sprintf(__('Raw: %1$s (%2$d rows)', 'backupinfo'), $endpoint, count($rows))) . '</h3></div>';
+        echo '<div class="card-body"><pre class="mb-0" style="max-height:30rem;overflow:auto">'
+            . htmlescape(json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES))
+            . '</pre></div></div>';
+    }
+}
 
 if (isset($_POST['probe']) && isset($connections[$selected])) {
     $result = Probe::run(
