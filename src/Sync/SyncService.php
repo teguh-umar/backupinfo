@@ -175,7 +175,7 @@ class SyncService
      */
     public function applyToAssets(ObjectStore $store, FieldsBridge $f, int|Rpo $rpoHours, int $nowS, array $extraItemIds = []): int
     {
-        if (!$f->available()) {
+        if (!$f->canWrite()) {
             return 0;
         }
 

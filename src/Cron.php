@@ -141,7 +141,7 @@ final class Cron extends \CommonGLPI
         $error = '';
         try {
             $bridge = FieldsBridge::fromConfig();
-            if (!$bridge->available()) {
+            if (!$bridge->canWrite()) {
                 // Said out loud: a mapping problem used to show only "0 updated" (VM 2026-11-03).
                 $error = 'Fields not updated: ' . implode(' ', $bridge->problems());
                 Toolbox::logInFile('backupinfo', 'applyToAssets: ' . $error . "\n");

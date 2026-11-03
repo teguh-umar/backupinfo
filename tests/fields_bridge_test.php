@@ -161,9 +161,38 @@ $g->fieldRows[5][0]['type'] = 'text';
 $b = new FieldsBridge(cfg(), $g);
 check('status field that is not yes/no is a problem', !$b->available() && str_contains(implode(' ', $b->problems()), 'Yes/No'));
 
+// Multiple dropdown media field (VM 2026-11-03): supported, the plugin writes one entry as a list
 $g = gw();
 $g->fieldRows[5][1]['multiple'] = true;
-check('multiple dropdown media field is a problem', !(new FieldsBridge(cfg(), $g))->available());
+$b = new FieldsBridge(cfg(), $g);
+check('multiple dropdown media: available, no problem', $b->available() && $b->problems() === []);
+check('multiple dropdown media: written as a one-entry list', $b->write('Computer', 7, true, 'Vinchin · VM · DAILY')
+    && ($g->updates[0][0]['plugin_fields_backupmediacontentfielddropdowns_id'] ?? null) === [11]);
+$g->rows[ROW]['plugin_fields_backupmediacontentfielddropdowns_id'] = '[11]';   // as Fields stores it (JSON)
+$g->updates = [];
+check('multiple dropdown media: same entry stored as JSON is no change', $b->write('Computer', 7, true, 'Vinchin · VM · DAILY') === false && $g->updates === []);
+$g->rows[ROW]['plugin_fields_backupmediacontentfielddropdowns_id'] = '[11,12]';
+check('multiple dropdown media: other entries are replaced by the one the sync sets', $b->write('Computer', 7, true, 'Vinchin · VM · DAILY')
+    && ($g->updates[0][0]['plugin_fields_backupmediacontentfielddropdowns_id'] ?? null) === [11]);
+$g->updates = [];
+$g->rows[ROW]['plugin_fields_backupmediacontentfielddropdowns_id'] = '[11]';
+check('multiple dropdown media: a new value adds an entry and writes it as a list', $b->write('Computer', 7, true, 'Vinchin · VM · NEW')
+    && ($g->updates[0][0]['plugin_fields_backupmediacontentfielddropdowns_id'] ?? null) === [101]);
+
+// canWrite(): the sync's gate. One usable owned field is enough; Backup Status must not wait
+// for a media-field problem (VM 2026-11-03: nothing was written at all).
+$g = gw();
+$g->fieldRows[5][1]['type'] = 'number';
+$b = new FieldsBridge(cfg(), $g);
+check('media unusable: not available (Setup warns) but canWrite (status still synced)', !$b->available() && $b->canWrite());
+$g = gw();
+$g->fieldRows[5][0]['is_active'] = false;
+$g->fieldRows[5][1]['is_active'] = false;
+check('both owned fields unusable: cannot write', !(new FieldsBridge(cfg(), $g))->canWrite());
+check('no container: cannot write', !(new FieldsBridge(cfg(['fields_container' => 'nosuch']), gw()))->canWrite());
+$g = gw();
+$g->active = false;
+check('Fields inactive: cannot write', !(new FieldsBridge(cfg(), $g))->canWrite());
 
 $g = gw();
 $g->fieldRows[5][1]['type'] = 'number';

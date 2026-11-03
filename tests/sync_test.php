@@ -112,7 +112,7 @@ final class FakeBridge extends FieldsBridge
     public array $writes = [];
     public bool $ok = true;
     public function __construct() { parent::__construct([], new NullGateway()); }
-    public function available(): bool { return $this->ok; }
+    public function canWrite(): bool { return $this->ok; }
     public function write(string $itemtype, int $id, bool $hasBackup, string $media): bool
     {
         $this->writes[] = [$itemtype, $id, $hasBackup, $media];

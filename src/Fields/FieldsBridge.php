@@ -58,6 +58,27 @@ class FieldsBridge
     }
 
     /**
+     * The sync's gate: true when at least one owned field can be written. A problem with one
+     * field (listed by problems() for Setup) must not stop the other: on the VM a multiple
+     * dropdown media field kept Backup Status from being written at all (2026-11-03).
+     */
+    public function canWrite(): bool
+    {
+        return $this->safely(function (): bool {
+            [$container] = $this->resolveContainer(self::ITEMTYPE);
+            if ($container === null) {
+                return false;
+            }
+            foreach (['status', 'media'] as $role) {
+                if ($this->resolveField($container, $role)[0] !== null) {
+                    return true;
+                }
+            }
+            return false;
+        }, false);
+    }
+
+    /**
      * Why Fields is (partly) not updated, for the Setup warning. Empty when all is well.
      * The mandatory field is reported only when it is set but cannot be read.
      *
@@ -326,9 +347,6 @@ class FieldsBridge
             $expected = $types === ['yesno'] ? 'Yes/No' : 'dropdown or text';
             return [null, sprintf('Fields field "%s" (for "%s") must be %s, not %s.', $wanted, $label, $expected, $field['type'])];
         }
-        if ($field['type'] === 'dropdown' && !empty($field['multiple'])) {
-            return [null, sprintf('Fields field "%s" (for "%s") is a multiple dropdown, which is not supported.', $wanted, $label)];
-        }
         if ($role !== 'mandatory' && $this->isPolicyField($container, $field)) {
             return [null, sprintf('Fields field "%s" (for "%s") is the human-set "Wajib Backup" field; the plugin never writes it.', $wanted, $label)];
         }
@@ -364,7 +382,7 @@ class FieldsBridge
         return [$column => $desired];
     }
 
-    /** @return array<string,int|string> */
+    /** @return array<string,int|string|list<int>> */
     private function mediaChange(array $field, array $current, string $media): array
     {
         $column = self::column($field);
@@ -376,8 +394,14 @@ class FieldsBridge
         if ($field['type'] !== 'dropdown') {
             return (string) ($stored ?? '') === $media ? [] : [$column => $media];
         }
-        $entry = $this->gateway->findDropdownEntry((string) $field['name'], $media);
+        // A multiple dropdown stores a JSON list of ids; the sync owns the field, so it holds
+        // exactly the one entry the sync sets (Fields json-encodes the list it is given).
+        $multiple = !empty($field['multiple']);
+        $entry    = $this->gateway->findDropdownEntry((string) $field['name'], $media);
         if ($entry > 0) {
+            if ($multiple) {
+                return self::storedList($stored) === [$entry] ? [] : [$column => [$entry]];
+            }
             return (int) ($stored ?? 0) === $entry ? [] : [$column => $entry];
         }
         // The value is new to the dropdown, so it differs from the stored one: add the entry.
@@ -386,7 +410,14 @@ class FieldsBridge
             $this->warn('dropdown:' . $field['name'], sprintf('Could not add "%s" to the dropdown of Fields field "%s".', $media, $field['name']));
             return [];
         }
-        return [$column => $entry];
+        return [$column => $multiple ? [$entry] : $entry];
+    }
+
+    /** @return list<int> ids in a multiple dropdown value (JSON text in the DB, or a list) */
+    private static function storedList(mixed $stored): array
+    {
+        $list = is_string($stored) ? json_decode($stored, true) : $stored;
+        return is_array($list) ? array_map('intval', array_values($list)) : [];
     }
 
     /** First $max characters (not bytes) of $s; works without mbstring. */
