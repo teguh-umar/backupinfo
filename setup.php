@@ -67,6 +67,8 @@ function plugin_init_backupinfo()
     }
     \GlpiPlugin\Pgnsuite\ConfigTab::register();
     $PLUGIN_HOOKS[\GlpiPlugin\Pgnsuite\ConfigTab::HOOK]['backupinfo'] = \GlpiPlugin\Backupinfo\SuiteConfig::class . '::section';
+    // Wrench in Setup > Plugins opens the shared settings page on this section (user, 2026-11-03)
+    $PLUGIN_HOOKS['config_page']['backupinfo'] = 'front/pgnsuite.settings.php?section=backupinfo';
 
     // "Backup" section of the shared PGN Suite asset tab, on Computer only (hub §5).
     // Search options on Computer: plugin_backupinfo_getAddSearchOptionsNew() in hook.php.

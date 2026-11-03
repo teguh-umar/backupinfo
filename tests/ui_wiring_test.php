@@ -23,6 +23,7 @@ $setup = $read('setup.php');
 check('shared AssetTab loaded only when no other plugin did', (bool) preg_match("/if \\(!class_exists\\(\\\\GlpiPlugin\\\\Pgnsuite\\\\AssetTab::class, false\\)\\) \\{\\s*require_once __DIR__ \\. '\\/lib\\/pgnsuite\\/AssetTab\\.php';/", $setup));
 check('shared AssetTab registered on Computer', str_contains($setup, "\\GlpiPlugin\\Pgnsuite\\AssetTab::register(['Computer']);"));
 check('backupinfo asset section provider hooked', str_contains($setup, "\$PLUGIN_HOOKS[\\GlpiPlugin\\Pgnsuite\\AssetTab::HOOK]['backupinfo'] = \\GlpiPlugin\\Backupinfo\\AssetTab::class . '::sections';"));
+check('wrench in Setup > Plugins opens the Backup Info settings section', str_contains($setup, "\$PLUGIN_HOOKS['config_page']['backupinfo'] = 'front/pgnsuite.settings.php?section=backupinfo';"));
 check('no own addtabon on Computer', !preg_match("/addtabon'\\s*=>\\s*\\[[^\\]]*'Computer'/", $setup));
 
 $tab = $read('src/AssetTab.php');
