@@ -1,5 +1,18 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.2.0-rc11 — 2026-11-03 (release candidate)
+
+rc10 checked on the VM: Probe RPO per job (360 h two-week, 48 h daily, 192 h weekly).
+Fields were not written at all ("Computers updated in Fields: 0"):
+- Cause: "Backup Media - Content" is a **multiple** dropdown, which the plugin refused, and
+  that one problem stopped every write, Backup Status included.
+- A multiple dropdown media field is now supported: the sync writes one entry (the field is
+  filled by the sync), compared with the stored value so history is written only on change.
+- Backup Status is written whenever it can be, even if the media field has a problem; Setup
+  still lists the problem.
+- Sync now shows why Fields were not updated (the mapping problems) instead of only "0", and
+  a value Fields refuses is logged once per run with the item and columns.
+
 ## 0.2.0-rc10 — 2026-11-03 (release candidate)
 
 rc9 checked on the VM: wrench, Setup, RPO 360 h for VM-TEST-02 with a search, asset status.
