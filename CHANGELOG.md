@@ -1,5 +1,12 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.2.0 — 2026-11-03
+
+Final release: the tree of 0.2.0-rc11, confirmed by the user on the VM (2026-11-03):
+Probe and RPO per job schedule, Backup Status = Yes and Backup Media on vm-test-02, no
+history on a second sync, values visible from other entities, wrench in Setup > Plugins,
+upgrades without errors. Changes since 0.1.0: see the 0.2.0-rc1 to rc11 entries below.
+
 ## 0.2.0-rc11 — 2026-11-03 (release candidate)
 
 rc10 checked on the VM: Probe RPO per job (360 h two-week, 48 h daily, 192 h weekly).
