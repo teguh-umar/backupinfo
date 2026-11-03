@@ -1,5 +1,15 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.3.0-rc1 — 2026-11-03 (release candidate)
+
+Audit evidence, stage 1 (user 2026-11-03: ISO 27001, internal audit, ICOFR):
+- Probe page: **Sample audit endpoints** button. Read-only, one page per Vinchin endpoint:
+  failed runs (`/jobs/history`, status 4), job and system alarms, job and system logs, VM
+  report, verification reports (`/industry/report`), restore verification and virus scan of a
+  sampled restore point, copy history of a copy or replica job. Credentials masked. A refused
+  endpoint is one warning line, so the sample shows what this API key may read before the
+  audit evidence page and Risk Register / ITSM ticket integration are built on it.
+
 ## 0.2.0 — 2026-11-03
 
 Final release: the tree of 0.2.0-rc11, confirmed by the user on the VM (2026-11-03):
