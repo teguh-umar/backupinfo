@@ -20,6 +20,9 @@ final class AuditData
     /** @var array<int, string> */
     public readonly array $computers;
 
+    /** Mandatory Computers before the entity filter (to say why the page is empty). */
+    public readonly int $mandatoryTotal;
+
     /** @var array<int, list<array<string, mixed>>> */
     private ?array $objects = null;
 
@@ -29,7 +32,9 @@ final class AuditData
     /** @param array{key: string, label: string, from: string, to: string} $period */
     public function __construct(public readonly array $period)
     {
-        $this->computers = self::inScope();
+        $ids                  = Policy::fromConfig()->mandatoryIds();
+        $this->mandatoryTotal = count($ids);
+        $this->computers      = self::inScope($ids);
     }
 
     /**
@@ -46,12 +51,12 @@ final class AuditData
 
         $table = match ($key) {
             'policy'     => AuditPage::policy($this->computers, $this->objects(), Rpo::fromConfig()),
-            'coverage'   => AuditPage::coverage($this->computers, $this->objects(), Rpo::fromConfig(), $this->live('platformVms', [], $errors), time()),
+            'coverage'   => AuditPage::coverage($this->computers, $this->objects(), Rpo::fromConfig(), ($this->computers === [] ? [] : $this->live('platformVms', [], $errors)), time()),
             'population' => AuditPage::population($this->computers, $this->runs ??= $this->readRuns($ids, $from, $to)),
             'failures'   => AuditPage::failures($this->computers, $this->runs ??= $this->readRuns($ids, $from, $to)),
             'restore'    => AuditPage::restore($this->computers, self::tests($ids, substr($to, 0, 10)), RestoreInterval::overrides($ids),
                 RestoreInterval::globalMonths(), substr($from, 0, 10), substr($to, 0, 10)),
-            'copies'     => AuditPage::copies($this->computers, $this->objects(), $this->live('copyRuns', [$from, $to], $errors)),
+            'copies'     => AuditPage::copies($this->computers, $this->objects(), ($this->computers === [] ? [] : $this->live('copyRuns', [$from, $to], $errors))),
             'activity'   => $this->activity($from, $to, $errors),
             default      => throw new \InvalidArgumentException('unknown section'),
         };
@@ -76,12 +81,20 @@ final class AuditData
         return AuditPage::activity($jobLogs, $this->live('systemLogs', [$from, $to], $errors), $this->live('systemAlarms', [$from, $to], $errors));
     }
 
-    /** Merged rows of one AuditSource method over every active connection. */
+    /** Merged rows of one AuditSource method over every active connection (cached a short while). */
     private function live(string $method, array $args, array &$errors): array
     {
+        global $GLPI_CACHE;
+
         $rows = [];
-        foreach ($this->sources() as $s) {
-            $res = $s['source']->$method(...$args);
+        $ttl  = AuditCache::ttl($this->period['to'], time());
+        foreach ($this->sources() as $id => $s) {
+            $res = AuditCache::remember(
+                is_object($GLPI_CACHE) ? $GLPI_CACHE : null,
+                AuditCache::key($id, $method, $args),
+                $ttl,
+                static fn(): array => $s['source']->$method(...$args)
+            );
             if ($res['error'] !== '') {
                 $errors[] = $s['name'] . ': ' . $res['error'];
             }
@@ -120,13 +133,16 @@ final class AuditData
         )));
     }
 
-    /** @return array<int, string> mandatory Computers visible in the active entities, id => name */
-    private static function inScope(): array
+    /**
+     * @param list<int> $ids mandatory Computers
+     * @return array<int, string> those visible in the active entities, id => name
+     */
+    private static function inScope(array $ids): array
     {
         global $DB;
 
         $out = [];
-        foreach (array_chunk(Policy::fromConfig()->mandatoryIds(), 500) as $chunk) {
+        foreach (array_chunk($ids, 500) as $chunk) {
             foreach ($DB->request([
                 'SELECT' => ['id', 'name'],
                 'FROM'   => 'glpi_computers',

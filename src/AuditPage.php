@@ -26,6 +26,24 @@ final class AuditPage
     }
 
     /**
+     * Why the page is empty, when it is: nothing is marked as must be backed up, or the marked
+     * Computers are outside the user's active entities. Null when some are in scope.
+     */
+    public static function scopeNote(int $mandatoryTotal, int $visible): ?string
+    {
+        if ($visible > 0) {
+            return null;
+        }
+        if ($mandatoryTotal === 0) {
+            return __('No Computer is marked as must be backed up ("Wajib Backup" = Yes, or the manual list), or the Fields mapping is not set (Setup > Backup Info). Sections 1 to 6 stay empty.', 'backupinfo');
+        }
+        return sprintf(
+            __('%d Computers are marked as must be backed up, but none is in your active entities. Select their entity (or a parent one with sub-entities) and reload.', 'backupinfo'),
+            $mandatoryTotal
+        );
+    }
+
+    /**
      * @param array<int, string> $computers in-scope Computers, id => name
      * @param array<int, list<array<string, mixed>>> $objectsByItem matched objects per Computer
      */

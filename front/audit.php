@@ -2,7 +2,9 @@
 
 /**
  * Audit evidence: seven sections for one period, for the mandatory ("Wajib Backup") Computers in the
- * user's active entities; each section exports as CSV (?export=<section>). Read-only.
+ * user's active entities. The page opens at once and fills each section with its own request
+ * (?section=<key>), the fast GLPI ones first. Exports: ?export=<section>|all, as Excel (default) or
+ * CSV (&format=csv). Read-only.
  */
 
 use GlpiPlugin\Backupinfo\AuditData;
@@ -10,22 +12,27 @@ use GlpiPlugin\Backupinfo\AuditPage;
 use GlpiPlugin\Backupinfo\AuditPeriod;
 use GlpiPlugin\Backupinfo\Csv;
 use GlpiPlugin\Backupinfo\RightDefinition;
+use GlpiPlugin\Backupinfo\Xlsx;
 
 include('../../../inc/includes.php');
 Session::checkRight(RightDefinition::REPORT, READ);
 
-$maxRows = 500; // per section on screen; the CSV has every row
+$maxRows = 500; // per section on screen; the exports have every row
+$live    = ['coverage', 'copies', 'activity']; // read from the backup system: loaded last
+// Excel sheet names (31 characters at most)
+$tabs    = ['policy' => '1 Policy', 'coverage' => '2 Coverage', 'population' => '3 Runs (population)', 'failures' => '4 Failures',
+    'restore' => '5 Restore tests', 'copies' => '6 Off-site copies', 'activity' => '7 Changes and alarms'];
 
 $now    = time();
 $period = AuditPeriod::parse((string) ($_GET['period'] ?? ''), $now);
 $data   = new AuditData($period);
 $export = (string) ($_GET['export'] ?? '');
+$self   = Html::getPrefixedUrl('/plugins/backupinfo/front/audit.php');
+$titles = AuditPage::titles();
 
-// CSV: headers and body, then exit, before any HTML.
-if (in_array($export, AuditPage::SECTIONS, true)) {
-    $section = $data->section($export);
-    $meta    = [
-        'Report'         => 'Backup Info audit evidence: ' . $export,
+$meta = static function (string $what) use ($period, $data, $now): array {
+    return [
+        'Report'         => 'Backup Info audit evidence: ' . $what,
         'Period'         => $period['label'] . ' (' . $period['from'] . ' to ' . $period['to'] . ')',
         'Scope'          => sprintf('%d Computers marked as must be backed up, in the exporting user\'s entities', count($data->computers)),
         'Generated at'   => date('Y-m-d H:i:s', $now),
@@ -33,20 +40,99 @@ if (in_array($export, AuditPage::SECTIONS, true)) {
         'Connections'    => implode(', ', $data->connectionNames()),
         'Plugin version' => PLUGIN_BACKUPINFO_VERSION,
     ];
+};
+
+// Exports: headers and body, then exit, before any HTML.
+if ($export === 'all' || in_array($export, AuditPage::SECTIONS, true)) {
+    $keys     = $export === 'all' ? AuditPage::SECTIONS : [$export];
+    $filename = 'backupinfo-' . $export . '-' . $period['key'];
+    $wantCsv  = (string) ($_GET['format'] ?? '') === 'csv';
+
+    if (!$wantCsv && Xlsx::available()) {
+        $sheets  = [];
+        $summary = [];
+        foreach ($keys as $key) {
+            $section = $data->section($key);
+            $head    = $export === 'all' ? ['Section' => $titles[$key], 'Period' => $period['label']] : $meta($key);
+            foreach ($section['errors'] as $i => $error) {
+                $head['Read error ' . ($i + 1)] = $error;
+            }
+            $head['Note'] = $section['note'];
+            $sheets[]     = Xlsx::sheet($tabs[$key], $head, $section['columns'], $section['rows']);
+            $summary[]    = [$titles[$key], count($section['rows']), implode(' | ', $section['errors'])];
+        }
+        if ($export === 'all') {
+            array_unshift($sheets, Xlsx::sheet('Info', $meta('all sections'), ['Section', 'Rows', 'Read errors'], $summary));
+        }
+        header('Content-Type: ' . Xlsx::MIME);
+        header('Content-Disposition: attachment; filename="' . $filename . '.xlsx"');
+        header('Cache-Control: no-store');
+        $out = fopen('php://output', 'wb');
+        Xlsx::write($out, Xlsx::parts($sheets));
+        fclose($out);
+        exit;
+    }
+
+    // CSV holds one table: "all" without a zip writer gives the population, the core of the evidence.
+    $key     = $export === 'all' ? 'population' : $export;
+    $section = $data->section($key);
+    $head    = $meta($key);
     foreach ($section['errors'] as $i => $error) {
-        $meta['Read error ' . ($i + 1)] = $error;
+        $head['Read error ' . ($i + 1)] = $error;
     }
     header('Content-Type: text/csv; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="backupinfo-' . $export . '-' . $period['key'] . '.csv"');
+    header('Content-Disposition: attachment; filename="backupinfo-' . $key . '-' . $period['key'] . '.csv"');
     header('Cache-Control: no-store');
-    echo Csv::render($meta, $section);
+    echo Csv::render($head, $section);
+    exit;
+}
+
+// One section's body, fetched by the page below.
+if (isset($_GET['section'])) {
+    $key = (string) $_GET['section'];
+    if (!in_array($key, AuditPage::SECTIONS, true)) {
+        http_response_code(400);
+        exit;
+    }
+    $section = $data->section($key);
+    $total   = count($section['rows']);
+    header('Content-Type: text/html; charset=UTF-8');
+    header('Cache-Control: no-store');
+    echo '<span class="d-none" data-count="' . $total . '"></span>';
+    echo '<p class="text-muted">' . htmlescape($section['note']) . '</p>';
+    foreach ($section['errors'] as $error) {
+        echo '<div class="alert alert-warning">' . htmlescape($error) . '</div>';
+    }
+    if ($total === 0) {
+        echo '<div class="text-muted">' . __s('Nothing for this period.', 'backupinfo') . '</div>';
+        exit;
+    }
+    echo '<div class="table-responsive"><table class="tab_cadre_fixehov"><tr class="noHover">';
+    foreach ($section['columns'] as $column) {
+        echo '<th>' . htmlescape($column) . '</th>';
+    }
+    echo '</tr>';
+    foreach (array_slice($section['rows'], 0, $maxRows) as $row) {
+        echo '<tr class="tab_bg_1">';
+        foreach ($row as $cell) {
+            echo '<td>' . htmlescape((string) $cell) . '</td>';
+        }
+        echo '</tr>';
+    }
+    echo '</table></div>';
+    if ($total > $maxRows) {
+        echo '<div class="text-muted mt-2">' . htmlescape(sprintf(__('Showing %1$d of %2$d rows; the export has all of them.', 'backupinfo'), $maxRows, $total)) . '</div>';
+    }
     exit;
 }
 
 Html::header(__('Audit evidence', 'backupinfo'), '', \GlpiPlugin\Pgnsuite\Menu::SECTOR, 'backupinfo', 'audit');
 \GlpiPlugin\Pgnsuite\Menu::renderSubNav('backupinfo', 'audit');
 
-$self = Html::getPrefixedUrl('/plugins/backupinfo/front/audit.php');
+$exportUrl = static fn(string $what, string $format = ''): string => $self . '?' . http_build_query(
+    ['period' => $period['key'], 'export' => $what] + ($format !== '' ? ['format' => $format] : [])
+);
+
 echo '<div class="container-fluid">';
 echo '<form method="get" action="' . htmlescape($self) . '" class="d-flex flex-wrap gap-2 align-items-end mb-3">';
 echo '<div><label class="form-label" for="backupinfo-period">' . __s('Period', 'backupinfo') . '</label>';
@@ -56,6 +142,8 @@ foreach (AuditPeriod::choices($now) as $key => $label) {
 }
 echo '</select></div>';
 echo '<button type="submit" class="btn btn-primary">' . __s('Show', 'backupinfo') . '</button>';
+echo '<a class="btn btn-outline-success ms-auto" href="' . htmlescape($exportUrl('all')) . '"><i class="ti ti-file-spreadsheet"></i> '
+    . __s('Export all sections (Excel)', 'backupinfo') . '</a>';
 echo '</form>';
 
 echo '<div class="alert alert-info">' . htmlescape(sprintf(
@@ -65,8 +153,11 @@ echo '<div class="alert alert-info">' . htmlescape(sprintf(
     $period['to'],
     count($data->computers)
 )) . '</div>';
+$scopeNote = AuditPage::scopeNote($data->mandatoryTotal, count($data->computers));
+if ($scopeNote !== null) {
+    echo '<div class="alert alert-warning">' . htmlescape($scopeNote) . '</div>';
+}
 
-$titles = AuditPage::titles();
 echo '<div class="btn-group flex-wrap mb-3" role="group">';
 foreach ($titles as $key => $title) {
     echo '<a class="btn btn-outline-secondary" href="#backupinfo-audit-' . $key . '">' . htmlescape($title) . '</a>';
@@ -74,41 +165,44 @@ foreach ($titles as $key => $title) {
 echo '</div>';
 
 foreach ($titles as $key => $title) {
-    $section = $data->section($key);
-    $csvUrl  = $self . '?' . http_build_query(['period' => $period['key'], 'export' => $key]);
-    $total   = count($section['rows']);
-
     echo '<div class="card mb-3" id="backupinfo-audit-' . $key . '">';
     echo '<div class="card-header d-flex justify-content-between align-items-center">';
-    echo '<h3 class="card-title">' . htmlescape($title) . ' <span class="text-muted">(' . $total . ')</span></h3>';
-    echo '<a class="btn btn-sm btn-outline-primary" href="' . htmlescape($csvUrl) . '"><i class="ti ti-file-spreadsheet"></i> ' . __s('Export CSV', 'backupinfo') . '</a>';
-    echo '</div><div class="card-body">';
-    echo '<p class="text-muted">' . htmlescape($section['note']) . '</p>';
-    foreach ($section['errors'] as $error) {
-        echo '<div class="alert alert-warning">' . htmlescape($error) . '</div>';
-    }
-    if ($total === 0) {
-        echo '<div class="text-muted">' . __s('Nothing for this period.', 'backupinfo') . '</div>';
-    } else {
-        echo '<div class="table-responsive"><table class="tab_cadre_fixehov"><tr class="noHover">';
-        foreach ($section['columns'] as $column) {
-            echo '<th>' . htmlescape($column) . '</th>';
-        }
-        echo '</tr>';
-        foreach (array_slice($section['rows'], 0, $maxRows) as $row) {
-            echo '<tr class="tab_bg_1">';
-            foreach ($row as $cell) {
-                echo '<td>' . htmlescape((string) $cell) . '</td>';
-            }
-            echo '</tr>';
-        }
-        echo '</table></div>';
-        if ($total > $maxRows) {
-            echo '<div class="text-muted mt-2">' . htmlescape(sprintf(__('Showing %1$d of %2$d rows; the CSV export has all of them.', 'backupinfo'), $maxRows, $total)) . '</div>';
-        }
-    }
+    echo '<h3 class="card-title">' . htmlescape($title) . ' <span class="text-muted" id="backupinfo-audit-count-' . $key . '"></span></h3>';
+    echo '<div class="btn-group">';
+    echo '<a class="btn btn-sm btn-outline-success" href="' . htmlescape($exportUrl($key)) . '"><i class="ti ti-file-spreadsheet"></i> ' . __s('Excel', 'backupinfo') . '</a>';
+    echo '<a class="btn btn-sm btn-outline-secondary" href="' . htmlescape($exportUrl($key, 'csv')) . '">' . __s('CSV', 'backupinfo') . '</a>';
     echo '</div></div>';
+    echo '<div class="card-body" id="backupinfo-audit-body-' . $key . '"><div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>'
+        . (in_array($key, $live, true) ? __s('Reading the backup system...', 'backupinfo') : __s('Loading...', 'backupinfo')) . '</div></div>';
+    echo '</div>';
 }
 echo '</div>';
+
+// GLPI sections first, then the live reads; one at a time (the session serialises them anyway).
+$order = array_merge(array_values(array_diff(AuditPage::SECTIONS, $live)), $live);
+echo Html::scriptBlock('(async () => {
+    const base = ' . json_encode($self . '?' . http_build_query(['period' => $period['key']]), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';
+    const failed = ' . json_encode(__('This section could not be loaded. Reload the page or use the export.', 'backupinfo'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';
+    for (const key of ' . json_encode($order) . ') {
+        const body = document.getElementById("backupinfo-audit-body-" + key);
+        try {
+            const res = await fetch(base + "&section=" + encodeURIComponent(key), {credentials: "same-origin"});
+            if (!res.ok) {
+                throw new Error(String(res.status));
+            }
+            body.innerHTML = await res.text();
+            const count = body.querySelector("[data-count]");
+            if (count) {
+                document.getElementById("backupinfo-audit-count-" + key).textContent = "(" + count.dataset.count + ")";
+            }
+        } catch (e) {
+            body.innerHTML = "";
+            const div = document.createElement("div");
+            div.className = "alert alert-danger";
+            div.textContent = failed;
+            body.appendChild(div);
+        }
+    }
+})();');
 
 Html::footer();
