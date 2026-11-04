@@ -74,6 +74,7 @@ function plugin_backupinfo_install()
             `restore_points` int unsigned NOT NULL DEFAULT 0,
             `data_size` varchar(64) NOT NULL DEFAULT '',
             `schedule_hours` int unsigned DEFAULT NULL,
+            `timepoint_uuid` varchar(64) DEFAULT NULL,
             `abnormal_chain` tinyint NOT NULL DEFAULT 0,
             `source_deleted` tinyint NOT NULL DEFAULT 0,
             `itemtype` varchar(100) DEFAULT NULL,
@@ -84,9 +85,89 @@ function plugin_backupinfo_install()
             UNIQUE KEY `unicity` (`connections_id`, `source_key`),
             KEY `item` (`itemtype`, `items_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
-    } elseif (!$DB->fieldExists('glpi_plugin_backupinfo_objects', 'schedule_hours')) {
-        // 0.2.0-rc6: job schedule interval (NULL = unknown, the global RPO applies)
-        $DB->doQuery("ALTER TABLE `glpi_plugin_backupinfo_objects` ADD COLUMN `schedule_hours` int unsigned DEFAULT NULL AFTER `data_size`");
+    } else {
+        if (!$DB->fieldExists('glpi_plugin_backupinfo_objects', 'schedule_hours')) {
+            // 0.2.0-rc6: job schedule interval (NULL = unknown, the global RPO applies)
+            $DB->doQuery("ALTER TABLE `glpi_plugin_backupinfo_objects` ADD COLUMN `schedule_hours` int unsigned DEFAULT NULL AFTER `data_size`");
+        }
+        if (!$DB->fieldExists('glpi_plugin_backupinfo_objects', 'timepoint_uuid')) {
+            // 0.3.0: latest restore point, to read its Vinchin verification history
+            $DB->doQuery("ALTER TABLE `glpi_plugin_backupinfo_objects` ADD COLUMN `timepoint_uuid` varchar(64) DEFAULT NULL AFTER `schedule_hours`");
+        }
+    }
+
+    // 0.3.0 audit evidence: every backup run, append-only (the ICOFR population)
+    if (!$DB->tableExists('glpi_plugin_backupinfo_runs')) {
+        $DB->doQuery("CREATE TABLE `glpi_plugin_backupinfo_runs` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT,
+            `connections_id` int unsigned NOT NULL DEFAULT 0,
+            `history_uuid` varchar(64) NOT NULL DEFAULT '',
+            `job_name` varchar(255) NOT NULL DEFAULT '',
+            `job_uuid` varchar(64) NOT NULL DEFAULT '',
+            `start_time` timestamp NULL DEFAULT NULL,
+            `finish_time` timestamp NULL DEFAULT NULL,
+            `status` varchar(20) NOT NULL DEFAULT '',
+            `status_text` varchar(64) NOT NULL DEFAULT '',
+            `size_text` varchar(64) NOT NULL DEFAULT '',
+            `duration_s` int unsigned DEFAULT NULL,
+            `reason` text,
+            `date_creation` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `unicity` (`connections_id`, `history_uuid`),
+            KEY `start_time` (`start_time`),
+            KEY `status` (`status`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    }
+
+    // Which Computers a run covered; tickets_id / problems_id are filled by stage 3 (0.4.0)
+    if (!$DB->tableExists('glpi_plugin_backupinfo_runs_items')) {
+        $DB->doQuery("CREATE TABLE `glpi_plugin_backupinfo_runs_items` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT,
+            `runs_id` int unsigned NOT NULL DEFAULT 0,
+            `computers_id` int unsigned NOT NULL DEFAULT 0,
+            `vm_name` varchar(255) NOT NULL DEFAULT '',
+            `item_status` varchar(20) NOT NULL DEFAULT '',
+            `tickets_id` int unsigned NOT NULL DEFAULT 0,
+            `problems_id` int unsigned NOT NULL DEFAULT 0,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `unicity` (`runs_id`, `computers_id`),
+            KEY `computers_id` (`computers_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    }
+
+    // Restore tests: manual records and imported Vinchin verifications (source = vinchin)
+    if (!$DB->tableExists('glpi_plugin_backupinfo_restoretests')) {
+        $DB->doQuery("CREATE TABLE `glpi_plugin_backupinfo_restoretests` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT,
+            `entities_id` int unsigned NOT NULL DEFAULT 0,
+            `is_recursive` tinyint NOT NULL DEFAULT 0,
+            `computers_id` int unsigned NOT NULL DEFAULT 0,
+            `date` date DEFAULT NULL,
+            `method` varchar(30) NOT NULL DEFAULT '',
+            `result` varchar(20) NOT NULL DEFAULT '',
+            `rto_minutes` int unsigned DEFAULT NULL,
+            `users_id` int unsigned NOT NULL DEFAULT 0,
+            `source` varchar(20) NOT NULL DEFAULT 'manual',
+            `source_ref` varchar(128) DEFAULT NULL,
+            `comment` text,
+            `date_creation` timestamp NULL DEFAULT NULL,
+            `date_mod` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `source_ref` (`source`, `source_ref`),
+            KEY `computer_date` (`computers_id`, `date`),
+            KEY `entities_id` (`entities_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    }
+
+    // Per-Computer restore-test interval override (months, 0 = exempt); no row = Setup default
+    if (!$DB->tableExists('glpi_plugin_backupinfo_restoreintervals')) {
+        $DB->doQuery("CREATE TABLE `glpi_plugin_backupinfo_restoreintervals` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT,
+            `computers_id` int unsigned NOT NULL DEFAULT 0,
+            `months` smallint unsigned NOT NULL DEFAULT 0,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `unicity` (`computers_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
     }
 
     // Manual policy: assets expected to be backed up
@@ -125,6 +206,9 @@ function plugin_backupinfo_install()
         'fields_status_field'    => '',
         'fields_media_field'     => '',
         'fields_mandatory_field' => '',
+        'run_pages_max'          => 20,
+        'run_keep_months'        => 36,
+        'restore_interval_months' => 12,
     ];
     $current = Config::getConfigurationValues($ctx, array_keys($defaults));
     $missing = array_diff_key($defaults, $current);

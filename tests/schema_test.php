@@ -13,6 +13,13 @@ $tables = [
         'last_backup', 'restore_points', 'data_size', 'abnormal_chain', 'source_deleted', 'itemtype', 'items_id',
         'match_state', 'date_mod'],
     'glpi_plugin_backupinfo_policies'    => ['id', 'itemtype', 'items_id'],
+    // 0.3.0 audit evidence (stage 2)
+    'glpi_plugin_backupinfo_runs'        => ['id', 'connections_id', 'history_uuid', 'job_name', 'job_uuid', 'start_time',
+        'finish_time', 'status', 'status_text', 'size_text', 'duration_s', 'reason', 'date_creation'],
+    'glpi_plugin_backupinfo_runs_items'  => ['id', 'runs_id', 'computers_id', 'vm_name', 'item_status', 'tickets_id', 'problems_id'],
+    'glpi_plugin_backupinfo_restoretests' => ['id', 'entities_id', 'is_recursive', 'computers_id', 'date', 'method', 'result',
+        'rto_minutes', 'users_id', 'source', 'source_ref', 'comment', 'date_creation', 'date_mod'],
+    'glpi_plugin_backupinfo_restoreintervals' => ['id', 'computers_id', 'months'],
 ];
 
 foreach ($tables as $table => $columns) {
@@ -33,6 +40,19 @@ check('objects index (itemtype, items_id)',
 check('policies unique (itemtype, items_id)',
     (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`itemtype`,\s*`items_id`\)/', $install));
 check('install adds missing columns idempotently (fieldExists)', str_contains($install, 'fieldExists'));
+check('runs unique (connections_id, history_uuid)',
+    (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`connections_id`,\s*`history_uuid`\)/', $install));
+check('runs_items unique (runs_id, computers_id)',
+    (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`runs_id`,\s*`computers_id`\)/', $install));
+check('restoretests unique (source, source_ref)',
+    (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`source`,\s*`source_ref`\)/', $install));
+check('restoreintervals unique (computers_id)',
+    (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`computers_id`\)/', $install));
+check('objects table has timepoint_uuid', str_contains($install, '`timepoint_uuid` varchar(64) DEFAULT NULL'));
+check('upgrade adds timepoint_uuid behind fieldExists', (bool) preg_match("/fieldExists\\('glpi_plugin_backupinfo_objects', 'timepoint_uuid'\\)/", $install));
+foreach (['run_pages_max' => 20, 'run_keep_months' => 36, 'restore_interval_months' => 12] as $key => $value) {
+    check("config default $key = $value", (bool) preg_match("/'$key'\s*=>\s*$value,/", $install));
+}
 
 // One-shot drop of the rc tables.
 foreach (['assets', 'jobs', 'storages', 'mappings'] as $old) {

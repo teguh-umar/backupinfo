@@ -5,6 +5,10 @@ function plugin_backupinfo_uninstall()
     global $DB;
 
     $tables = [
+        'glpi_plugin_backupinfo_runs_items',
+        'glpi_plugin_backupinfo_runs',
+        'glpi_plugin_backupinfo_restoretests',
+        'glpi_plugin_backupinfo_restoreintervals',
         'glpi_plugin_backupinfo_policies',
         'glpi_plugin_backupinfo_objects',
         'glpi_plugin_backupinfo_mappings',
@@ -29,6 +33,7 @@ function plugin_backupinfo_uninstall()
     $DB->doQuery("DELETE FROM `glpi_displaypreferences` WHERE `itemtype` LIKE 'GlpiPlugin\\\\Backupinfo\\\\%'");
     $DB->doQuery("DELETE FROM `glpi_notepads` WHERE `itemtype` LIKE 'GlpiPlugin\\\\Backupinfo\\\\%'");
     $DB->doQuery("DELETE FROM `glpi_savedsearches` WHERE `itemtype` LIKE 'GlpiPlugin\\\\Backupinfo\\\\%'");
+    $DB->doQuery("DELETE FROM `glpi_documents_items` WHERE `itemtype` LIKE 'GlpiPlugin\\\\Backupinfo\\\\%'");
     $DB->doQuery("DELETE FROM `glpi_logs` WHERE `itemtype` LIKE 'GlpiPlugin\\\\Backupinfo\\\\%'");
 
     return true;
