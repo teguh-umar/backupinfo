@@ -6,7 +6,7 @@ use Session;
 
 class Menu
 {
-    /** Entry in the shared Tools ICT menu: Coverage, Objects, Restore tests, Probe, each behind its right. */
+    /** Entry in the shared Tools ICT menu: Coverage, Audit evidence, Objects, Restore tests, Probe, each behind its right. */
     public static function entry(): ?array
     {
         $options = [];
@@ -15,6 +15,13 @@ class Menu
                 'title' => __('Coverage', 'backupinfo'),
                 'page'  => '/plugins/backupinfo/front/coverage.php',
                 'icon'  => 'ti ti-shield-check',
+            ];
+        }
+        if (Session::haveRight(RightDefinition::REPORT, READ)) {
+            $options['audit'] = [
+                'title' => __('Audit evidence', 'backupinfo'),
+                'page'  => '/plugins/backupinfo/front/audit.php',
+                'icon'  => 'ti ti-file-certificate',
             ];
         }
         if (Session::haveRight(RightDefinition::VIEW, READ)) {

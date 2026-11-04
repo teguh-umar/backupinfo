@@ -1,0 +1,115 @@
+<?php
+
+require __DIR__ . '/bootstrap.php';
+
+foreach (['Rpo', 'Status', 'RestoreInterval', 'AuditPeriod', 'AuditPage', 'Csv'] as $f) {
+    require BI_ROOT . "/src/$f.php";
+}
+
+use GlpiPlugin\Backupinfo\AuditPage;
+use GlpiPlugin\Backupinfo\AuditPeriod;
+use GlpiPlugin\Backupinfo\Csv;
+use GlpiPlugin\Backupinfo\Rpo;
+
+$read = static fn (string $rel): string => (string) @file_get_contents(BI_ROOT . '/' . $rel);
+$now  = strtotime('2026-11-04 10:00:00');
+
+// --- period
+$p = AuditPeriod::parse('', $now);
+check('period: default = last full month', $p['from'] === '2026-10-01 00:00:00' && $p['to'] === '2026-10-31 23:59:59' && $p['key'] === '2026-10');
+$p = AuditPeriod::parse('2026-02', $now);
+check('period: month, inclusive end of day', $p['from'] === '2026-02-01 00:00:00' && $p['to'] === '2026-02-28 23:59:59' && $p['label'] === '2026-02');
+$p = AuditPeriod::parse('2026-Q3', $now);
+check('period: quarter', $p['from'] === '2026-07-01 00:00:00' && $p['to'] === '2026-09-30 23:59:59' && $p['key'] === '2026-Q3');
+$p = AuditPeriod::parse('2025', $now);
+check('period: year', $p['from'] === '2025-01-01 00:00:00' && $p['to'] === '2025-12-31 23:59:59');
+foreach (['2026-13', '2026-Q5', 'x', '2026-1', '1999', '2026-10; DROP'] as $bad) {
+    check("period: bad '$bad' -> default", AuditPeriod::parse($bad, $now)['key'] === '2026-10');
+}
+check('period: future month -> default', AuditPeriod::parse('2027-01', $now)['key'] === '2026-10');
+check('period: current month allowed (to = now cut later)', AuditPeriod::parse('2026-11', $now)['key'] === '2026-11');
+$keys = array_map('strval', array_keys(AuditPeriod::choices($now))); // a year key becomes an int key in PHP
+check('period choices: months, quarters, years, newest first', $keys[0] === '2026-11' && in_array('2026-Q4', $keys, true) && in_array('2025', $keys, true) && in_array('2025-11', $keys, true));
+
+// --- builders
+$rpo       = new Rpo(26, 24);
+$computers = [11 => 'SRV-A', 12 => 'SRV-B', 13 => 'SRV-C'];
+$objects   = [
+    11 => [['name' => 'VM-A', 'job_name' => 'JOB-1', 'schedule_hours' => 24, 'last_backup' => $now - 3600, 'source_label' => 'Vinchin']],
+    12 => [['name' => 'VM-B', 'job_name' => 'JOB-1, JOB-2', 'schedule_hours' => null, 'last_backup' => $now - 30 * 86400, 'source_label' => 'Vinchin']],
+];
+
+$s = AuditPage::policy($computers, $objects, $rpo);
+check('policy: one row per object, Computer without object listed too', count($s['rows']) === 3 && $s['rows'][2][0] === 'SRV-C' && $s['rows'][2][1] === '');
+check('policy: RPO label from schedule or global', $s['rows'][0][4] === '48 h (schedule 24 h + 24 h)' && $s['rows'][1][4] === '26 h (global)', json_encode($s['rows']));
+
+$platform = [['vm_name' => 'vm-b', 'backup_status' => 1, 'backup_count' => 3, 'last_backup_time' => ''], ['vm_name' => 'SRV-C', 'backup_status' => 0, 'backup_count' => 0, 'last_backup_time' => '']];
+$s = AuditPage::coverage($computers, $objects, $rpo, $platform, $now);
+check('coverage: status per Computer', array_column($s['rows'], 1) === ['protected', 'expired', 'none'], json_encode($s['rows']));
+check('coverage: platform report matched by VM or Computer name', $s['rows'][1][4] === 'protected' && $s['rows'][2][4] === 'not protected' && $s['rows'][0][4] === '');
+check('coverage: note says it is current, not historical', str_contains($s['note'], 'now'));
+
+$runs = [
+    ['computers_id' => 11, 'vm_name' => 'VM-A', 'job_name' => 'JOB-1', 'start_time' => '2026-10-02 01:00:00', 'finish_time' => '2026-10-02 01:10:00', 'status' => 'success', 'item_status' => 'success', 'duration_s' => 600, 'size_text' => '1GB', 'history_uuid' => 'u1', 'reason' => null, 'connection' => 'C1'],
+    ['computers_id' => 12, 'vm_name' => 'VM-B', 'job_name' => 'JOB-1', 'start_time' => '2026-10-03 01:00:00', 'finish_time' => '2026-10-03 01:00:09', 'status' => 'failed', 'item_status' => 'failed', 'duration_s' => 9, 'size_text' => '0B', 'history_uuid' => 'u2', 'reason' => 'Failed to prepare', 'connection' => 'C1'],
+    ['computers_id' => 11, 'vm_name' => 'VM-A', 'job_name' => 'JOB-1', 'start_time' => '2026-10-03 01:00:00', 'finish_time' => '2026-10-03 01:00:09', 'status' => 'failed', 'item_status' => 'success', 'duration_s' => 9, 'size_text' => '0B', 'history_uuid' => 'u2', 'reason' => 'Failed to prepare', 'connection' => 'C1'],
+];
+$s = AuditPage::population($computers, $runs);
+check('population: one line per run x Computer', count($s['rows']) === 3 && $s['rows'][0][0] === 'SRV-A' && $s['rows'][0][9] === 'u1');
+check('population: columns', $s['columns'][0] === 'Computer' && in_array('Run ID', $s['columns'], true));
+$s = AuditPage::failures($computers, $runs);
+check('failures: only items that failed (a VM that succeeded in a failed run is not a failure)', count($s['rows']) === 1 && $s['rows'][0][0] === 'SRV-B' && $s['rows'][0][5] === 'Failed to prepare');
+
+$tests = [
+    ['computers_id' => 11, 'date' => '2026-10-15', 'method' => 'vm_restore', 'result' => 'pass', 'source' => 'manual'],
+    ['computers_id' => 12, 'date' => '2025-09-01', 'method' => 'file_restore', 'result' => 'pass', 'source' => 'manual'],
+    ['computers_id' => 12, 'date' => '2026-10-20', 'method' => 'file_restore', 'result' => 'fail', 'source' => 'manual'],
+];
+$s = AuditPage::restore($computers, $tests, [13 => 0], 12, '2026-10-01', '2026-10-31');
+$byName = array_column($s['rows'], null, 0);
+check('restore: passed in period -> ok', $byName['SRV-A'][4] === 'ok' && $byName['SRV-A'][2] === '2026-10-15' && $byName['SRV-A'][6] === 1);
+check('restore: failed test does not restart the clock -> overdue at period end', $byName['SRV-B'][4] === 'overdue' && $byName['SRV-B'][2] === '2025-09-01' && $byName['SRV-B'][5] === '2026-10-20 (fail)');
+check('restore: override 0 -> exempt', $byName['SRV-C'][1] === 0 && $byName['SRV-C'][4] === 'exempt');
+check('restore: tests after the period are ignored', AuditPage::restore([11 => 'SRV-A'], $tests, [], 12, '2026-09-01', '2026-09-30')['rows'][0][4] === 'none');
+
+$copies = [
+    ['job_name' => 'COPY-1', 'start_time' => '2026-10-02 14:54:35', 'end_time' => '2026-10-02 16:07:27', 'status' => 'success', 'item_name' => 'vm-a', 'item_status' => 'success', 'timepoint_count' => 72, 'valid_size' => '1GB', 'error' => ''],
+    ['job_name' => 'COPY-1', 'start_time' => '2026-10-02 14:54:35', 'end_time' => '', 'status' => 'success', 'item_name' => 'VM-OTHER', 'item_status' => 'success', 'timepoint_count' => 1, 'valid_size' => '', 'error' => ''],
+];
+$s = AuditPage::copies($computers, $objects, $copies);
+check('copies: only in-scope VMs, matched by object name', count($s['rows']) === 1 && $s['rows'][0][0] === 'SRV-A');
+
+$s = AuditPage::activity(
+    [['op_time' => '2026-10-20 04:07:37', 'user_name' => 'u1', 'log_level_des' => 'Success', 'job_name' => 'JOB-1', 'log_description' => 'scheduled']],
+    [['op_time' => '2026-10-21 17:30:55', 'user_name' => 'u2', 'op_type_des' => 'System Login', 'description' => 'login']],
+    [['alarm_time' => '2026-10-19 15:52:42', 'level_des' => 'Failed', 'solved_des' => 'Pending', 'description' => 'disk']]
+);
+check('activity: merged newest first with kinds', array_column($s['rows'], 1) === ['System log', 'Job log', 'System alarm']);
+
+// --- CSV
+$csv = Csv::render(['Period' => '2026-10', 'Generated by' => 'u1'], ['columns' => ['A', 'B'], 'rows' => [
+    ['=1+1', '+x'], ['-5', '@SUM(A1)'], ["\tx", "\rx"], [-5, 'normal'], ['é ü', 'a,b "q"'],
+]]);
+check('csv: UTF-8 BOM', str_starts_with($csv, "\xEF\xBB\xBF"));
+$lines = preg_split('/\r?\n/', substr($csv, 3));
+check('csv: header block, blank line, then the table', $lines[0] === 'Period,2026-10' && $lines[1] === '"Generated by",u1' && $lines[2] === '' && $lines[3] === 'A,B', json_encode(array_slice($lines, 0, 4)));
+check('csv: formula cells neutralised', $lines[4] === "'=1+1,'+x" && $lines[5] === "'-5,'@SUM(A1)", json_encode([$lines[4], $lines[5]]));
+check('csv: tab and CR neutralised', str_contains($csv, "\"'\tx\"") && str_contains($csv, "'\rx"));
+check('csv: real numbers untouched', in_array('-5,normal', $lines, true));
+check('csv: unicode and quoting kept', in_array('"é ü","a,b ""q"""', $lines, true));
+
+// --- page wiring
+$page = $read('front/audit.php');
+check('page: report READ', str_contains($page, 'Session::checkRight(RightDefinition::REPORT, READ);'));
+check('page: export before Html::header', ($e = strpos($page, "Csv::render(")) !== false && $e < strpos($page, 'Html::header('));
+check('page: export exits', (bool) preg_match('/Csv::render\([^;]*;\s*exit;/s', $page) || (bool) preg_match('/echo Csv::render\(.*?\);\s*exit;/s', $page));
+check('page: sub-nav', str_contains($page, "renderSubNav('backupinfo', 'audit')"));
+check('page: writes nothing', !preg_match('/->(add|update|delete)\(|\$DB->(insert|update|delete|doQuery)|setConfigurationValues/', $page));
+check('page: no entity list of its own', !str_contains($page, 'glpi_entities'));
+$data = $read('src/AuditData.php');
+check('data: in-scope Computers restricted to the user entities', str_contains($data, "getEntitiesRestrictCriteria('glpi_computers')") && str_contains($data, 'mandatoryIds()'));
+check('data: system logs/alarms behind config READ (logins carry IPs)', str_contains($data, 'Session::haveRight(RightDefinition::CONFIG, READ)'));
+$menu = $read('src/Menu.php');
+check('menu: audit evidence behind report READ', (bool) preg_match("/\\\$options\['audit'\] = \[\s*'title' => __\('Audit evidence', 'backupinfo'\),/", $menu));
+
+done();
