@@ -3,12 +3,16 @@
 namespace GlpiPlugin\Backupinfo;
 
 use Computer;
+use Config;
 use CronTask;
 use GlpiPlugin\Backupinfo\Fields\FieldsBridge;
 use GlpiPlugin\Backupinfo\Matching\DbAssetLookup;
 use GlpiPlugin\Backupinfo\Matching\Matcher;
 use GlpiPlugin\Backupinfo\Source\Registry;
+use GlpiPlugin\Backupinfo\Source\RunHistorySource;
 use GlpiPlugin\Backupinfo\Sync\DbObjectStore;
+use GlpiPlugin\Backupinfo\Sync\DbRunStore;
+use GlpiPlugin\Backupinfo\Sync\RunSync;
 use GlpiPlugin\Backupinfo\Sync\SyncService;
 use GLPIKey;
 use Toolbox;
@@ -123,6 +127,8 @@ final class Cron extends \CommonGLPI
             }
         }
 
+        self::storeRuns($out['results'], $sources, $now, $log);
+
         $fieldsError = '';
         $touched     = self::applyFields($out['affected'], $now, $fieldsError);
         $log($fieldsError === '' ? sprintf('assets updated in Fields: %d', $touched) : 'Fields update failed: ' . $fieldsError);
@@ -159,5 +165,81 @@ final class Cron extends \CommonGLPI
             Toolbox::logInFile('backupinfo', 'applyToAssets: ' . $error . "\n");
             return 0;
         }
+    }
+
+    /**
+     * Audit evidence (0.3.0): new backup runs of every connection whose object sync succeeded, then
+     * the retention purge. Never fails the sync: an error is logged against the connection's runs only.
+     *
+     * @param list<array{id:int,name:string,status:string}> $results
+     * @param array<int, mixed> $sources connection id => source
+     */
+    private static function storeRuns(array $results, array $sources, int $now, callable $log): void
+    {
+        $cfg   = Config::getConfigurationValues(SuiteConfig::CONTEXT, ['run_pages_max', 'run_keep_months']);
+        $pages = max(1, (int) ($cfg['run_pages_max'] ?? 20));
+        $store = new DbRunStore();
+        $byConn = null;
+
+        foreach ($results as $r) {
+            $source = $sources[$r['id']] ?? null;
+            if ($r['status'] !== 'ok' || !($source instanceof RunHistorySource)) {
+                continue;
+            }
+            try {
+                $byConn ??= self::objectLookups();
+                $names = $byConn[$r['id']]['names'] ?? [];
+                $jobs  = $byConn[$r['id']]['jobs'] ?? [];
+                $res   = (new RunSync())->run(
+                    (int) $r['id'],
+                    $source,
+                    $store,
+                    static fn(string $vm): int => $names[mb_strtolower(trim($vm))] ?? 0,
+                    static fn(string $job): array => $jobs[mb_strtolower(trim($job))] ?? [],
+                    $pages
+                );
+                $log(sprintf('%s: runs stored %d (failed %d)', $r['name'], $res['new'], $res['failed']));
+                if ($res['errors'] !== []) {
+                    Toolbox::logInFile('backupinfo', sprintf("Runs %s: %d error(s), first: %s\n", $r['name'], count($res['errors']), $res['errors'][0]));
+                    $log(sprintf('%s: %d run read error(s), see backupinfo.log', $r['name'], count($res['errors'])));
+                }
+            } catch (\Throwable $e) {
+                $line = sprintf('Runs %s: %s', $r['name'], SyncService::errorLine($e));
+                Toolbox::logInFile('backupinfo', $line . "\n");
+                $log($line);
+            }
+        }
+
+        try {
+            $purged = $store->purgeOlderThan((int) ($cfg['run_keep_months'] ?? 36), $now);
+            if ($purged > 0) {
+                $log(sprintf('runs purged (retention): %d', $purged));
+            }
+        } catch (\Throwable $e) {
+            Toolbox::logInFile('backupinfo', 'Runs purge: ' . SyncService::errorLine($e) . "\n");
+        }
+    }
+
+    /**
+     * Matched objects per connection: object name -> Computer, and job name -> its Computers.
+     *
+     * @return array<int, array{names: array<string, int>, jobs: array<string, list<array{computers_id:int, vm_name:string}>>}>
+     */
+    private static function objectLookups(): array
+    {
+        $out = [];
+        foreach ((new DbObjectStore())->matched() as $o) {
+            $conn = (int) $o['connections_id'];
+            $name = trim((string) $o['name']);
+            $id   = (int) $o['items_id'];
+            $out[$conn]['names'][mb_strtolower($name)] = $id;
+            // job_name holds ", "-joined names: split, never LIKE
+            foreach (explode(',', (string) $o['job_name']) as $job) {
+                if (trim($job) !== '') {
+                    $out[$conn]['jobs'][mb_strtolower(trim($job))][] = ['computers_id' => $id, 'vm_name' => $name];
+                }
+            }
+        }
+        return $out;
     }
 }

@@ -42,8 +42,8 @@ check('policies unique (itemtype, items_id)',
 check('install adds missing columns idempotently (fieldExists)', str_contains($install, 'fieldExists'));
 check('runs unique (connections_id, history_uuid)',
     (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`connections_id`,\s*`history_uuid`\)/', $install));
-check('runs_items unique (runs_id, computers_id)',
-    (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`runs_id`,\s*`computers_id`\)/', $install));
+check('runs_items unique (runs_id, vm_name): unmatched VMs (computers_id 0) do not collide',
+    (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`runs_id`,\s*`vm_name`\)/', $install));
 check('restoretests unique (source, source_ref)',
     (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`source`,\s*`source_ref`\)/', $install));
 check('restoreintervals unique (computers_id)',

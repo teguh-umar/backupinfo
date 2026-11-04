@@ -130,7 +130,7 @@ function plugin_backupinfo_install()
             `tickets_id` int unsigned NOT NULL DEFAULT 0,
             `problems_id` int unsigned NOT NULL DEFAULT 0,
             PRIMARY KEY (`id`),
-            UNIQUE KEY `unicity` (`runs_id`, `computers_id`),
+            UNIQUE KEY `unicity` (`runs_id`, `vm_name`),
             KEY `computers_id` (`computers_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
     }
