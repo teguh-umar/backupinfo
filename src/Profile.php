@@ -60,6 +60,11 @@ class Profile extends \Profile
                 'label'    => __('View/Export Reports', 'backupinfo'),
                 'field'    => RightDefinition::REPORT,
             ],
+            [
+                'itemtype' => RestoreTest::class,
+                'label'    => __('Restore tests', 'backupinfo'),
+                'field'    => RightDefinition::RESTORETEST,
+            ],
         ];
 
         echo "<form method='post' action='" . htmlescape(\Profile::getFormURL()) . "' data-track-changes='true'>";
@@ -91,6 +96,7 @@ class Profile extends \Profile
             RightDefinition::CONFIG => ALLSTANDARDRIGHT,
             RightDefinition::VIEW   => READ,
             RightDefinition::REPORT => READ,
+            RightDefinition::RESTORETEST => ALLSTANDARDRIGHT,
         ];
 
         if ($profiles_id) {

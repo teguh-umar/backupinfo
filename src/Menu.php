@@ -6,7 +6,7 @@ use Session;
 
 class Menu
 {
-    /** Entry in the shared Tools ICT menu: Coverage, Objects, Probe, each behind its right. */
+    /** Entry in the shared Tools ICT menu: Coverage, Objects, Restore tests, Probe, each behind its right. */
     public static function entry(): ?array
     {
         $options = [];
@@ -22,6 +22,13 @@ class Menu
                 'title' => __('Backup objects', 'backupinfo'),
                 'page'  => '/plugins/backupinfo/front/objects.php',
                 'icon'  => 'ti ti-list-search',
+            ];
+        }
+        if (Session::haveRight(RightDefinition::RESTORETEST, READ)) {
+            $options['restoretests'] = [
+                'title' => __('Restore tests', 'backupinfo'),
+                'page'  => '/plugins/backupinfo/front/restoretest.php',
+                'icon'  => 'ti ti-restore',
             ];
         }
         // Connections are not here: they are set in Setup, Backup Info's section of the PGN

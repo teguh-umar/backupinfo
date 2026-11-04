@@ -71,6 +71,19 @@ class SuiteConfig
                 $errors[] = sprintf(__('Grace must be a whole number of hours from 0 to %d; it was not changed.', 'backupinfo'), Rpo::GRACE_MAX);
             }
         }
+        foreach ([
+            'restore_interval_months' => __('Restore-test interval must be a whole number of months from 0 to %d; it was not changed.', 'backupinfo'),
+            'run_keep_months'         => __('Run retention must be a whole number of months from 0 to %d; it was not changed.', 'backupinfo'),
+        ] as $key => $message) {
+            if (array_key_exists($key, $post)) {
+                $raw = trim((string) $post[$key]);
+                if (preg_match('/^\d+$/', $raw) === 1 && (int) $raw <= RestoreInterval::MAX_MONTHS) {
+                    $values[$key] = (int) $raw;
+                } else {
+                    $errors[] = sprintf($message, RestoreInterval::MAX_MONTHS);
+                }
+            }
+        }
         if (array_key_exists('policy_mode', $post)) {
             $values['policy_mode'] = (string) $post['policy_mode'] === Policy::MODE_MANUAL ? Policy::MODE_MANUAL : Policy::MODE_FIELD;
         }
@@ -121,7 +134,7 @@ class SuiteConfig
     {
         $canedit = Session::haveRight(RightDefinition::CONFIG, UPDATE);
         $action  = Html::getPrefixedUrl('/plugins/backupinfo/front/config.php');
-        $cfg     = Config::getConfigurationValues(self::CONTEXT, array_merge(['rpo_hours', 'rpo_grace_hours', 'policy_mode'], self::FIELD_KEYS));
+        $cfg     = Config::getConfigurationValues(self::CONTEXT, array_merge(['rpo_hours', 'rpo_grace_hours', 'policy_mode', 'restore_interval_months', 'run_keep_months'], self::FIELD_KEYS));
         $bridge  = FieldsBridge::fromConfig();
 
         self::connections();
@@ -147,6 +160,14 @@ class SuiteConfig
         echo '<div class="mb-3"><label class="form-label" for="backupinfo-rpo">' . __s('RPO (hours) when the job schedule is unknown', 'backupinfo') . '</label>';
         echo '<input type="number" min="' . self::RPO_MIN . '" max="' . self::RPO_MAX . '" step="1" class="form-control" id="backupinfo-rpo" name="rpo_hours" value="'
             . (int) ($cfg['rpo_hours'] ?? 26) . '"' . ($canedit ? '' : ' disabled') . '></div>';
+
+        // Audit evidence (0.3.0): restore-test interval (per Computer override on its Backup tab) and run retention.
+        echo '<div class="mb-3"><label class="form-label" for="backupinfo-restore">' . __s('Restore test required every (months, 0 = not required); a computer can override it on its Backup tab', 'backupinfo') . '</label>';
+        echo '<input type="number" min="0" max="' . RestoreInterval::MAX_MONTHS . '" step="1" class="form-control" id="backupinfo-restore" name="restore_interval_months" value="'
+            . (int) ($cfg['restore_interval_months'] ?? 12) . '"' . ($canedit ? '' : ' disabled') . '></div>';
+        echo '<div class="mb-3"><label class="form-label" for="backupinfo-keep">' . __s('Keep backup run history (months, 0 = forever)', 'backupinfo') . '</label>';
+        echo '<input type="number" min="0" max="' . RestoreInterval::MAX_MONTHS . '" step="1" class="form-control" id="backupinfo-keep" name="run_keep_months" value="'
+            . (int) ($cfg['run_keep_months'] ?? 36) . '"' . ($canedit ? '' : ' disabled') . '></div>';
 
         $mode = (string) ($cfg['policy_mode'] ?? Policy::MODE_FIELD) === Policy::MODE_MANUAL ? Policy::MODE_MANUAL : Policy::MODE_FIELD;
         echo '<div class="mb-3"><label class="form-label">' . __s('Which computers must be backed up', 'backupinfo') . '</label>';

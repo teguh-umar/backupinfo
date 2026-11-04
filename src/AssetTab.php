@@ -83,6 +83,7 @@ final class AssetTab
 
         if ($objects === []) {
             echo '<div class="text-muted">' . __s('No backup object is matched to this computer.', 'backupinfo') . '</div>';
+            self::renderRestore($item);
             echo '</div>';
             return;
         }
@@ -124,7 +125,92 @@ final class AssetTab
         if (count($objects) > self::MAX_ROWS) {
             echo '<div class="text-muted mt-2">' . htmlescape(sprintf(__('Showing %1$d of %2$d backup objects.', 'backupinfo'), self::MAX_ROWS, count($objects))) . '</div>';
         }
+        self::renderRestore($item);
         echo '</div>';
+    }
+
+    /**
+     * Restore tests of this Computer (audit evidence, 0.3.0): status against its interval, next due
+     * date, the last tests, an add link, and the per-Computer interval for config editors.
+     */
+    private static function renderRestore(CommonDBTM $item): void
+    {
+        if (!Session::haveRight(RightDefinition::RESTORETEST, READ)) {
+            return;
+        }
+        $id = (int) $item->getID();
+        try {
+            $override = RestoreInterval::get($id);
+            $months   = RestoreInterval::effective(RestoreInterval::globalMonths(), $override);
+            $last     = RestoreTest::lastPassDates([$id])[$id] ?? null;
+            $status   = RestoreInterval::status($last, $months, time());
+            $nextDue  = RestoreInterval::nextDue($last, $months);
+            $tests    = RestoreTest::forComputer($id, 5);
+        } catch (\Throwable $e) {
+            return; // never break the asset form
+        }
+
+        echo '<h4 class="mt-4">' . __s('Restore tests', 'backupinfo') . '</h4>';
+        echo '<div class="d-flex flex-wrap gap-3 align-items-center mb-2">';
+        echo self::restoreBadge($status);
+        echo '<span>' . htmlescape($months === 0
+            ? __('Not required for this computer', 'backupinfo')
+            : sprintf(__('Required every %d months', 'backupinfo'), $months)) . ' <span class="text-muted">('
+            . ($override === null ? __s('Setup default', 'backupinfo') : __s('set for this computer', 'backupinfo')) . ')</span></span>';
+        if ($nextDue !== null) {
+            echo '<span>' . __s('Next due', 'backupinfo') . ': <strong>' . htmlescape(Html::convDate($nextDue)) . '</strong></span>';
+        }
+        echo '</div>';
+
+        if ($tests === []) {
+            echo '<div class="text-muted mb-2">' . __s('No restore test recorded.', 'backupinfo') . '</div>';
+        } else {
+            $methods = RestoreTest::methods();
+            $results = RestoreTest::results();
+            echo '<table class="tab_cadre_fixehov"><tr class="noHover">'
+                . '<th>' . __s('Test date', 'backupinfo') . '</th>'
+                . '<th>' . __s('Method', 'backupinfo') . '</th>'
+                . '<th>' . __s('Result', 'backupinfo') . '</th>'
+                . '<th>' . __s('Source', 'backupinfo') . '</th>'
+                . '</tr>';
+            foreach ($tests as $t) {
+                $url = RestoreTest::getFormURLWithID((int) $t['id']);
+                echo '<tr class="tab_bg_1">'
+                    . '<td><a href="' . htmlescape($url) . '">' . htmlescape(Html::convDate((string) $t['date'])) . '</a></td>'
+                    . '<td>' . htmlescape($methods[$t['method']] ?? (string) $t['method']) . '</td>'
+                    . '<td>' . htmlescape($results[$t['result']] ?? (string) $t['result']) . '</td>'
+                    . '<td>' . htmlescape($t['source'] === RestoreTest::SOURCE_VINCHIN ? __('Vinchin', 'backupinfo') : __('Entered by hand', 'backupinfo')) . '</td>'
+                    . '</tr>';
+            }
+            echo '</table>';
+        }
+
+        if (Session::haveRight(RightDefinition::RESTORETEST, CREATE)) {
+            echo '<a class="btn btn-sm btn-outline-primary mt-2" href="' . htmlescape(RestoreTest::getFormURL() . '?computers_id=' . $id) . '">'
+                . '<i class="ti ti-plus"></i> ' . __s('Add restore test', 'backupinfo') . '</a>';
+        }
+
+        if (Session::haveRight(RightDefinition::CONFIG, UPDATE)) {
+            echo '<form method="post" class="d-flex flex-wrap gap-2 align-items-center mt-3" action="' . htmlescape(RestoreTest::getFormURL()) . '">';
+            echo '<label for="backupinfo-restore-months-' . $id . '">' . __s('Interval for this computer (months; blank = Setup default, 0 = not required)', 'backupinfo') . '</label>';
+            echo '<input type="number" min="0" max="' . RestoreInterval::MAX_MONTHS . '" step="1" class="form-control" style="max-width: 8rem" id="backupinfo-restore-months-' . $id
+                . '" name="restore_months" value="' . ($override === null ? '' : (int) $override) . '">';
+            echo Html::hidden('computers_id', ['value' => $id]);
+            echo Html::submit(_sx('button', 'Save'), ['name' => 'set_interval', 'class' => 'btn btn-sm btn-outline-secondary']);
+            Html::closeForm();
+        }
+    }
+
+    public static function restoreBadge(string $status): string
+    {
+        [$color, $label] = match ($status) {
+            RestoreInterval::OK      => ['success', __('Restore tested', 'backupinfo')],
+            RestoreInterval::DUE     => ['warning', __('Restore test due soon', 'backupinfo')],
+            RestoreInterval::EXEMPT  => ['secondary', __('Restore test not required', 'backupinfo')],
+            RestoreInterval::OVERDUE => ['danger', __('Restore test overdue', 'backupinfo')],
+            default                  => ['danger', __('No restore test', 'backupinfo')],
+        };
+        return '<span class="badge bg-' . $color . '-lt fs-5">' . htmlescape($label) . '</span>';
     }
 
     public static function badge(string $status): string
