@@ -3,14 +3,16 @@
 namespace GlpiPlugin\Backupinfo\Vinchin;
 
 use GlpiPlugin\Backupinfo\Source\AuditProbeableSource;
+use GlpiPlugin\Backupinfo\Source\AuditSource;
 use GlpiPlugin\Backupinfo\Source\BackupObject;
 use GlpiPlugin\Backupinfo\Source\BackupSource;
 use GlpiPlugin\Backupinfo\Source\PartialFetch;
 use GlpiPlugin\Backupinfo\Source\ProbeableSource;
 use GlpiPlugin\Backupinfo\Source\Run;
 use GlpiPlugin\Backupinfo\Source\RunHistorySource;
+use GlpiPlugin\Backupinfo\Text;
 
-final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeableSource, PartialFetch, RunHistorySource
+final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeableSource, PartialFetch, RunHistorySource, AuditSource
 {
     /** true when the last fetch() came from the job-history fallback (recent VM jobs only) */
     private bool $partial = false;
@@ -452,5 +454,148 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
         } catch (\RuntimeException $e) {
             return 'login: ' . $e->getMessage();
         }
+    }
+
+    // --- AuditSource: live reads for the audit evidence page (0.3.0) -------------------------
+
+    /** Keyword-free (the endpoint ignores it); the hypervisor address is not kept. */
+    public function platformVms(): array
+    {
+        if (($error = $this->ensureLogin()) !== '') {
+            return ['rows' => [], 'error' => $error];
+        }
+        try {
+            $rows = $this->client->getPaged('/backupmanager/report/vm', [], 100, 5000);
+        } catch (\RuntimeException $e) {
+            return ['rows' => [], 'error' => $e->getMessage()];
+        }
+        $out = [];
+        foreach ($rows as $row) {
+            if (!is_array($row) || trim((string) ($row['vm_name'] ?? '')) === '') {
+                continue;
+            }
+            $last  = trim((string) ($row['last_backup_time'] ?? ''));
+            $out[] = [
+                'vm_name'          => trim((string) $row['vm_name']),
+                'last_backup_time' => RunMapper::time($last) ?? '',
+                'backup_status'    => (int) ($row['backup_status'] ?? 0),
+                'backup_count'     => (int) ($row['backup_count'] ?? 0),
+                'backup_task'      => trim((string) ($row['backup_task'] ?? '')) === '--' ? '' : trim((string) ($row['backup_task'] ?? '')),
+            ];
+        }
+        return ['rows' => $out, 'error' => ''];
+    }
+
+    public function copyRuns(string $from, string $to): array
+    {
+        if (($error = $this->ensureLogin()) !== '') {
+            return ['rows' => [], 'error' => $error];
+        }
+        try {
+            $jobs = $this->client->getPaged(self::JOBS_PATH, ['search' => ''], 100, 5000);
+        } catch (\RuntimeException $e) {
+            return ['rows' => [], 'error' => $e->getMessage()];
+        }
+
+        $out = [];
+        foreach ($jobs as $job) {
+            if (!is_array($job) || preg_match('/copy|replica|replicat/i', (string) ($job['job_type'] ?? '')) !== 1) {
+                continue;
+            }
+            $uuid = trim((string) ($job['job_uuid'] ?? ''));
+            if ($uuid === '') {
+                continue;
+            }
+            $runs = $this->periodList('/copy/job/history', ['task_uuid' => $uuid], 'start_time', $from, $to, [null], 1000);
+            if ($runs['error'] !== '') {
+                return ['rows' => [], 'error' => $runs['error']];
+            }
+            foreach ($runs['rows'] as $run) {
+                $items = $run['details']['info'] ?? [];
+                foreach (is_array($items) ? $items : [] as $item) {
+                    if (!is_array($item)) {
+                        continue;
+                    }
+                    $out[] = [
+                        'job_name'        => trim((string) ($job['job_name'] ?? '')),
+                        'start_time'      => RunMapper::time($run['start_time'] ?? null) ?? '',
+                        'end_time'        => RunMapper::time($run['end_time'] ?? null) ?? '',
+                        'status'          => trim((string) ($run['status'] ?? '')),
+                        // "VM-A(Some Platform)": the platform suffix is not part of the VM name
+                        'item_name'       => trim((string) preg_replace('/\s*\([^()]*\)\s*$/', '', (string) ($item['item_name'] ?? ''))),
+                        'item_status'     => trim((string) ($item['item_status'] ?? '')),
+                        'timepoint_count' => (int) ($item['timepoint_count'] ?? 0),
+                        'valid_size'      => trim((string) ($item['valid_size'] ?? '')),
+                        'error'           => trim((string) ($item['error_code'] ?? '')),
+                    ];
+                }
+            }
+        }
+        return ['rows' => $out, 'error' => ''];
+    }
+
+    public function jobLogs(string $from, string $to): array
+    {
+        return $this->periodList('/logs/job', ['search' => ''], 'op_time', $from, $to, ['op_time'], 2000, 'log_description');
+    }
+
+    /** No keyword: with a VM name the endpoint returned nothing (VM, 2026-11-03). */
+    public function systemLogs(string $from, string $to): array
+    {
+        return $this->periodList('/logs/system', [], 'op_time', $from, $to, ['create_time', 'op_time'], 2000, 'description');
+    }
+
+    public function systemAlarms(string $from, string $to): array
+    {
+        return $this->periodList('/alarm/system', [], 'alarm_time', $from, $to, ['alarm_time'], 2000, 'description');
+    }
+
+    /**
+     * Newest-first list cut to [$from, $to]: paging stops at the first page that ends before $from.
+     * Sort fields are tried in turn (null = no sort). $textKey is made plain text.
+     *
+     * @param list<?string> $sorts
+     * @return array{rows: list<array<string, mixed>>, error: string}
+     */
+    private function periodList(string $path, array $params, string $timeKey, string $from, string $to, array $sorts, int $max, string $textKey = ''): array
+    {
+        if (($error = $this->ensureLogin()) !== '') {
+            return ['rows' => [], 'error' => $error];
+        }
+        $fromS = ItemMapper::parseTime($from) ?? 0;
+        $toS   = ItemMapper::parseTime($to) ?? PHP_INT_MAX;
+        $time  = static fn($row): ?int => is_array($row) ? ItemMapper::parseTime($row[$timeKey] ?? ($row['create_time'] ?? null)) : null;
+        $stop  = static function (array $batch) use ($time, $fromS): bool {
+            $t = $batch === [] ? null : $time(end($batch));
+            return $t !== null && $t < $fromS;
+        };
+
+        $rows = null;
+        $last = '';
+        foreach ($sorts as $sort) {
+            try {
+                // Without a sort the order is not known, so no early stop: only $max bounds the read.
+                $rows = $this->client->getPaged($path, ($sort === null ? [] : ['sort' => $sort, 'order' => 'desc']) + $params, 100, $max, $sort === null ? null : $stop);
+                break;
+            } catch (\RuntimeException $e) {
+                $last = $e->getMessage();
+            }
+        }
+        if ($rows === null) {
+            return ['rows' => [], 'error' => $last];
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            $t = $time($row);
+            if ($t === null || $t < $fromS || $t > $toS) {
+                continue;
+            }
+            if ($textKey !== '' && isset($row[$textKey])) {
+                $row[$textKey] = Text::plain((string) $row[$textKey], 500);
+            }
+            $out[] = $row;
+        }
+        return ['rows' => $out, 'error' => ''];
     }
 }

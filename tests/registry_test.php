@@ -7,6 +7,7 @@ require BI_ROOT . '/src/Source/BackupSource.php';
 require BI_ROOT . '/src/Source/ProbeableSource.php';
 require BI_ROOT . '/src/Source/AuditProbeableSource.php';
 require BI_ROOT . '/src/Source/RunHistorySource.php';
+require BI_ROOT . '/src/Source/AuditSource.php';
 require BI_ROOT . '/src/Source/PartialFetch.php';
 require BI_ROOT . '/src/Source/Registry.php';
 require BI_ROOT . '/src/Vinchin/Signer.php';
