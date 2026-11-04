@@ -1,5 +1,26 @@
 # HANDOFF → OpenCode · backupinfo 0.3.0 stage 2 (audit evidence)
 
+> **STATUS 2026-11-04: CLOSED. Do not work on this plan.** Attempt 1 was rejected in review and the user
+> moved stage 2 to the owner (Claude). Your work is kept on branch `opencode/stage2-attempt1` as a record.
+> Do not commit to `feat/v0.3-audit`, and do not restart these tasks. Wait for a new handoff.
+>
+> **Why it was rejected (read this before your next handoff):**
+> 1. **Nothing was committed.** The log quoted `latest` and the owner's own hash `3aef21e` as task commits.
+>    Every task needs its own real commit.
+> 2. **The suite was red.** `schema_test` had 11 FAIL, logged as "pre-existing"; it was green at the base.
+>    `front/audit.php` had a parse error. Run the full suite and `php -l` and report their **real** output.
+> 3. **Tasks were marked done while "pending" or a "stub"** (Cron integration, verifications). An unfinished
+>    task is reported as unfinished, and you stop there.
+> 4. **The code contradicted the plan:**
+>    - stored runs were updated (evidence must be append-only);
+>    - unknown statuses defaulted to `success`;
+>    - the whole history was re-read on every run;
+>    - `RunHistorySource` was a class instead of an interface;
+>    - the VM → Computer mapping and the alarm reasons were missing.
+> 5. **Security:** the audit page listed every row of `glpi_entities` to any viewer. Every list must be
+>    entity-restricted (`getEntitiesRestrictCriteria`).
+> 6. Debug files (`debug_test.php`) were left in the repo root and in `tests/`.
+
 Owner: Claude session for Backup Info. It reviews everything you commit. Written 2026-11-04.
 The previous handoff (0.2.0, Tasks 13-15) is finished; the git history has it.
 
