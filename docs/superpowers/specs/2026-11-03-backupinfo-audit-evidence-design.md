@@ -67,8 +67,9 @@ The daily Sync cron also stores every run of every job that covers a matched obj
   tester (users_id). Documents attach with the core Document tab (screenshots, signed forms).
 - Tab "Restore tests" on Computer and a list under the plugin menu. Right `plugin_backupinfo_restoretest`
   (read / create / update / purge), granted to Super-Admin on install.
-- Vinchin `verify_history` rows for a matched object are shown in the same tab as read-only
-  "Vinchin verification" rows (not copied into the table), so both sources count.
+- Vinchin `verify_history` rows for a matched in-scope object are imported by the Sync cron into the same
+  table as read-only rows (`source = vinchin`, deduped by the verify id), so both sources count and the
+  evidence survives Vinchin's retention (plan Task 8).
 
 ### 2.3 Audit evidence page (`front/audit.php`, sub-tab "Audit")
 
