@@ -1,5 +1,23 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.3.0-rc3 — 2026-11-04 (release candidate)
+
+Changes after the rc2 VM test.
+
+- **Excel export.** Every section exports as a real `.xlsx` sheet. The CSV link stays.
+  - The sheet has a bold header block, a frozen header row, a filter and readable column widths.
+  - Text is always written as text, so a value like `=1+1` can never run as a formula.
+  - **Export all sections (Excel)** gives one workbook: an Info sheet, then one sheet per section.
+  - The workbook is zipped with the ZipStream library GLPI 11 ships, or with ext-zip. Without
+    either, the export falls back to CSV.
+- **Faster audit page.** The page opens at once, then fills each section with its own request: the
+  GLPI sections first, then the three read from the backup system.
+- **Live reads are cached a short while** (5 minutes for an open period, 1 hour for a closed one), so
+  viewing and then exporting does not page through Vinchin again. A failed read is never cached.
+- Coverage and off-site copies no longer call Vinchin when no Computer is in scope.
+- **The page says why it is empty.** Either nothing is marked as must be backed up, or N Computers
+  are marked but none is in your active entities.
+
 ## 0.3.0-rc2 — 2026-11-04 (release candidate)
 
 Audit evidence, stage 2 (spec approved 2026-11-04). Nothing is written to Vinchin; nothing is
