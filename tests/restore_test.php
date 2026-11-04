@@ -82,6 +82,7 @@ check('methods for people exclude the Vinchin import', !array_key_exists('vinchi
 $cls = $read('src/RestoreTest.php');
 check('itemtype right', str_contains($cls, 'public static $rightname = RightDefinition::RESTORETEST;') && RightDefinitionCheck::ok());
 check('history on', str_contains($cls, 'public $dohistory = true;'));
+check('registered as a document type (else no Documents tab)', str_contains($read('setup.php'), "\\Plugin::registerClass(\\GlpiPlugin\\Backupinfo\\RestoreTest::class, ['document_types' => true]);"));
 check('documents and history tabs', str_contains($cls, "addStandardTab(Document_Item::class") && str_contains($cls, "addStandardTab(Log::class"));
 check('imported Vinchin rows are read-only', (bool) preg_match('/function canUpdateItem\(\): bool\s*\{\s*if \(\(\$this->fields\[\'source\'\] \?\? \'\'\) === self::SOURCE_VINCHIN\)/', $cls)
     && (bool) preg_match('/function canPurgeItem\(\): bool\s*\{\s*if \(\(\$this->fields\[\'source\'\] \?\? \'\'\) === self::SOURCE_VINCHIN\)/', $cls));

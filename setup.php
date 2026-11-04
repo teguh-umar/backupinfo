@@ -7,7 +7,7 @@
  * @license GPL-3.0-or-later
  */
 
-define('PLUGIN_BACKUPINFO_VERSION', '0.3.0-rc1');
+define('PLUGIN_BACKUPINFO_VERSION', '0.3.0-rc2');
 define('PLUGIN_BACKUPINFO_MIN_GLPI', '11.0.0');
 define('PLUGIN_BACKUPINFO_MAX_GLPI', '11.99.99');
 
@@ -53,6 +53,8 @@ function plugin_init_backupinfo()
     ];
 
     \Plugin::registerClass(\GlpiPlugin\Backupinfo\Profile::class, ['addtabon' => ['Profile']]);
+    // Restore tests carry their evidence as Documents (Documents tab on the record)
+    \Plugin::registerClass(\GlpiPlugin\Backupinfo\RestoreTest::class, ['document_types' => true]);
 
     // Shared suite sidebar menu (ICT Tools)
     if (!class_exists(\GlpiPlugin\Pgnsuite\Menu::class, false)) {

@@ -1,5 +1,56 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.3.0-rc2 — 2026-11-04 (release candidate)
+
+Audit evidence, stage 2 (spec approved 2026-11-04). Nothing is written to Vinchin; nothing is
+written to tickets or the Risk Register yet (stage 3, 0.4.0).
+
+**Backup runs are stored in GLPI** (the ICOFR population)
+- The Sync cron now stores every backup run, newest first. It stops at the first page that is
+  already stored; the first run backfills up to 20 pages (Setup: runs kept 36 months, 0 = forever).
+- Stored runs are never changed. The cron log shows `runs stored N (failed F)`.
+- Failed runs:
+  - get their per-VM result from Vinchin (at most 100 detail reads per sync);
+  - get their reason from the matching job alarm (same job, ±60 s). With no matching alarm the reason
+    stays empty; it is never guessed.
+- Successful runs take the Computers of their job.
+
+**Restore tests** (ISO 27001 A.8.13)
+- New record per Computer: date, method, result, restore time achieved, tester and comments.
+  Evidence is attached in its Documents tab.
+- Menu: Tools ICT › Backup Info › Restore tests.
+- New right "Restore tests"; Super-Admin gets every level.
+- How often a test is required is flexible:
+  - a Setup default (12 months; 0 = not required);
+  - overridable per Computer on its Backup tab (blank = default, 0 = exempt).
+- Only a **passed** test restarts the clock. A failed one is listed but does not count.
+- The Backup tab of a Computer shows:
+  - the status (tested / due within 30 days / overdue / none / not required);
+  - the next due date;
+  - the last 5 tests;
+  - an "Add restore test" link.
+- Vinchin restore-point verifications (ping, heartbeat, boot screenshot, integrity) are imported as
+  read-only restore tests. Up to 50 restore points are read per sync, in rotation.
+
+**Audit evidence page** (Tools ICT › Backup Info › Audit evidence, report right)
+- Per month, quarter or year (default: last full month), for the Wajib Backup Computers in your
+  entities. Seven sections:
+  1. backup policy;
+  2. coverage, including the backup system's own list of unprotected VMs;
+  3. backup runs (population);
+  4. failures with reason;
+  5. restore tests at period end;
+  6. off-site copies;
+  7. job changes, logins and alarms.
+- System log and alarms are shown only to Backup Info configuration users.
+- Each section exports as CSV:
+  - UTF-8, opens in Excel with accents intact;
+  - a header block giving period, scope, who exported it and when, and the plugin version;
+  - cells that a spreadsheet would run as a formula are neutralised.
+
+**Probe:** Sample audit endpoints also reads `/jobs/history/{uuid}` (the per-VM result of the
+first failed run). This endpoint is in the doc but has not been seen on the VM yet.
+
 ## 0.3.0-rc1 — 2026-11-03 (release candidate)
 
 Audit evidence, stage 1 (user 2026-11-03: ISO 27001, internal audit, ICOFR):
