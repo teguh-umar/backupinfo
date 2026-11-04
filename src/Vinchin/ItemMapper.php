@@ -8,7 +8,7 @@ use GlpiPlugin\Backupinfo\Source\BackupObject;
 final class ItemMapper
 {
     /** Vinchin renders local-time strings in the server's zone. */
-    private const SERVER_TZ = 'Asia/Jakarta';
+    public const SERVER_TZ = 'Asia/Jakarta';
 
     /**
      * @param list<array<string,mixed>> $rows

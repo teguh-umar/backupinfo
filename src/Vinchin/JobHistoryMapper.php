@@ -10,9 +10,9 @@ use GlpiPlugin\Backupinfo\Source\BackupObject;
  */
 final class JobHistoryMapper
 {
-    private const SKIP = '/restore|recover|verif|migrat|mount|instant/i';
-    private const FAILED = '/unsucc|incomplet|fail|error|abort|cancel|失败|错误|取消/iu';
-    private const SUCCESS = '/succe|complet|finish|ok|done|成功|完成/iu';
+    public const SKIP = '/restore|recover|verif|migrat|mount|instant/i';
+    public const FAILED = '/unsucc|incomplet|fail|error|abort|cancel|失败|错误|取消/iu';
+    public const SUCCESS = '/succe|complet|finish|ok|done|成功|完成/iu';
 
     /**
      * @param list<array<string,mixed>> $rows
