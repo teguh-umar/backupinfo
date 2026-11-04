@@ -14,6 +14,7 @@ use GlpiPlugin\Backupinfo\Sync\DbObjectStore;
 use GlpiPlugin\Backupinfo\Sync\DbRunStore;
 use GlpiPlugin\Backupinfo\Sync\RunSync;
 use GlpiPlugin\Backupinfo\Sync\SyncService;
+use GlpiPlugin\Backupinfo\Sync\VerifyImport;
 use GLPIKey;
 use Toolbox;
 
@@ -128,6 +129,7 @@ final class Cron extends \CommonGLPI
         }
 
         self::storeRuns($out['results'], $sources, $now, $log);
+        self::importVerifications($out['results'], $sources, $log);
 
         $fieldsError = '';
         $touched     = self::applyFields($out['affected'], $now, $fieldsError);
@@ -241,5 +243,65 @@ final class Cron extends \CommonGLPI
             }
         }
         return $out;
+    }
+
+    /**
+     * Vinchin verifications of the in-scope objects' newest restore points become restore-test
+     * records (option C). At most VerifyImport::PER_RUN reads per run, round-robin over the objects
+     * (cursor in the plugin config). Never fails the sync.
+     *
+     * @param list<array{id:int,name:string,status:string}> $results
+     * @param array<int, mixed> $sources
+     */
+    private static function importVerifications(array $results, array $sources, callable $log): void
+    {
+        try {
+            $ok = [];
+            foreach ($results as $r) {
+                $source = $sources[$r['id']] ?? null;
+                if ($r['status'] === 'ok' && is_object($source) && method_exists($source, 'verifications')) {
+                    $ok[(int) $r['id']] = $source;
+                }
+            }
+            if ($ok === []) {
+                return;
+            }
+
+            $inScope = array_flip(Policy::fromConfig()->mandatoryIds());
+            $targets = [];
+            foreach ((new DbObjectStore())->matched() as $o) {
+                $tp = trim((string) ($o['timepoint_uuid'] ?? ''));
+                if ($tp !== '' && isset($ok[(int) $o['connections_id']], $inScope[(int) $o['items_id']])) {
+                    $targets[$o['connections_id'] . '|' . $tp] = [(int) $o['connections_id'], $tp, (int) $o['items_id']];
+                }
+            }
+            ksort($targets);
+
+            $cfg = Config::getConfigurationValues(SuiteConfig::CONTEXT, ['verify_cursor']);
+            [$batch, $next] = VerifyImport::batch(array_keys($targets), (int) ($cfg['verify_cursor'] ?? 0), VerifyImport::PER_RUN);
+            $added = 0;
+            $errors = 0;
+            foreach ($batch as $key) {
+                [$conn, $tp, $computerId] = $targets[$key];
+                $res = $ok[$conn]->verifications($tp);
+                if ($res['error'] !== '') {
+                    $errors++;
+                    continue;
+                }
+                foreach ($res['rows'] as $row) {
+                    $input = VerifyImport::toInput($row, $computerId);
+                    if ($input !== null && RestoreTest::importVinchin($input)) {
+                        $added++;
+                    }
+                }
+            }
+            Config::setConfigurationValues(SuiteConfig::CONTEXT, ['verify_cursor' => $next]);
+            if ($batch !== []) {
+                $log(sprintf('verifications: %d restore point(s) read, %d imported, %d read error(s)', count($batch), $added, $errors));
+            }
+        } catch (\Throwable $e) {
+            Toolbox::logInFile('backupinfo', 'Verifications: ' . SyncService::errorLine($e) . "\n");
+            $log('verifications: ' . SyncService::errorLine($e));
+        }
     }
 }

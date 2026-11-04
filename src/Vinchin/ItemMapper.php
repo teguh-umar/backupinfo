@@ -37,7 +37,7 @@ final class ItemMapper
                 $key = strtolower($name);
                 if (!isset($vms[$key])) {
                     $vms[$key] = ['name' => $name, 'ip' => $ip, 'time' => $time, 'points' => 0, 'jobs' => [],
-                        'size' => '', 'abnormal' => false, 'deleted' => false];
+                        'size' => '', 'abnormal' => false, 'deleted' => false, 'timepoint' => ''];
                 }
                 $vm = &$vms[$key];
                 if ($vm['ip'] === '') {
@@ -45,11 +45,17 @@ final class ItemMapper
                 }
                 if ($time !== null && ($vm['time'] === null || $time >= $vm['time'])) {
                     $vm['time'] = $time;
+                    if (self::s($row['timepoint_uuid'] ?? '') !== '') {
+                        $vm['timepoint'] = self::s($row['timepoint_uuid']);
+                    }
                     if (self::s($row['data_size'] ?? '') !== '') {
                         $vm['size'] = self::s($row['data_size']);
                     }
                 } elseif ($vm['size'] === '') {
                     $vm['size'] = self::s($row['data_size'] ?? '');
+                }
+                if ($vm['timepoint'] === '') {
+                    $vm['timepoint'] = self::s($row['timepoint_uuid'] ?? '');
                 }
                 $vm['points'] += (int) ($row['point_num'] ?? 0);
                 $job = self::s($row['task_name'] ?? '');
@@ -81,7 +87,9 @@ final class ItemMapper
                 (int) ($row['point_num'] ?? 0),
                 self::s($row['data_size'] ?? ''),
                 self::flag($row['abnormal_chain_flag'] ?? false),
-                self::flag($row['src_data_deleted_flag'] ?? false)
+                self::flag($row['src_data_deleted_flag'] ?? false),
+                null,
+                self::s($row['timepoint_uuid'] ?? '') ?: null
             );
         }
 
@@ -89,7 +97,7 @@ final class ItemMapper
         foreach ($vms as $vm) {
             sort($vm['jobs'], SORT_STRING); // stable text whatever order Vinchin returns rows in
             $out[] = new BackupObject($vm['name'], $vm['name'], $vm['ip'], 'vm', implode(', ', $vm['jobs']),
-                $vm['time'], $vm['points'], $vm['size'], $vm['abnormal'], $vm['deleted']);
+                $vm['time'], $vm['points'], $vm['size'], $vm['abnormal'], $vm['deleted'], null, $vm['timepoint'] ?: null);
         }
         return array_merge($out, $others);
     }

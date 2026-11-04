@@ -129,8 +129,40 @@ class RestoreTest extends CommonDBTM
         return ['input' => $input, 'errors' => $errors];
     }
 
+    /** true only inside importVinchin(): a form can post any key, so the import path is not an input flag */
+    private static bool $importing = false;
+
+    /**
+     * Stores one imported Vinchin verification (cron, no session). Read-only once stored; the
+     * (source, source_ref) key makes a second import of the same row a no-op.
+     *
+     * @param array<string, mixed> $input from VerifyImport::toInput()
+     */
+    public static function importVinchin(array $input): bool
+    {
+        if (countElementsInTable(self::TABLE, ['source' => self::SOURCE_VINCHIN, 'source_ref' => $input['source_ref']]) > 0) {
+            return false;
+        }
+        self::$importing = true;
+        try {
+            return (bool) (new self())->add($input);
+        } finally {
+            self::$importing = false;
+        }
+    }
+
     public function prepareInputForAdd($input)
     {
+        if (self::$importing) {
+            $computer = new Computer();
+            if (!$computer->getFromDB((int) ($input['computers_id'] ?? 0))) {
+                return false;
+            }
+            $input['entities_id']  = (int) $computer->getEntityID();
+            $input['is_recursive'] = 0;
+            $input['source']       = self::SOURCE_VINCHIN;
+            return $input;
+        }
         $v = self::validate($input, time(), true);
         if ($v['errors'] !== []) {
             return self::refuse($v['errors']);

@@ -33,6 +33,7 @@ final class DbObjectStore implements ObjectStore
             'restore_points' => (int) $row['restore_points'],
             'data_size'      => (string) $row['data_size'],
             'schedule_hours' => ($row['schedule_hours'] ?? null) === null ? null : (int) $row['schedule_hours'],
+            'timepoint_uuid' => ($row['timepoint_uuid'] ?? null) === null ? null : (string) $row['timepoint_uuid'],
             'abnormal_chain' => (int) $row['abnormal_chain'],
             'source_deleted' => (int) $row['source_deleted'],
             'itemtype'       => $row['itemtype'],

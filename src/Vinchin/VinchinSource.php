@@ -278,6 +278,21 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
         $desc = ['search' => $search, 'order' => 'desc'];
 
         $sample('failed runs (' . self::HISTORY_PATH . ', job_status 4)', self::HISTORY_PATH, $desc + ['job_status' => 4], ['start_time', null]);
+
+        // Per-VM result of one run (0.3.0 run store reads it for failed runs): the first failed run.
+        $failedLabel = 'failed runs (' . self::HISTORY_PATH . ', job_status 4)';
+        $firstFailed = trim((string) ($out['raw'][$failedLabel][0]['history_uuid'] ?? ''));
+        if ($firstFailed === '') {
+            $out['errors'][] = self::HISTORY_PATH . '/{uuid}: skipped, no failed run in the sample';
+        } else {
+            try {
+                $data = $this->client->get(self::HISTORY_PATH . '/' . rawurlencode($firstFailed));
+                $list = is_array($data) ? ($data['list'] ?? ($data['rows'] ?? $data)) : [];
+                $out['raw'][self::HISTORY_PATH . '/{uuid}'] = is_array($list) && array_is_list($list) ? $list : [$list];
+            } catch (\RuntimeException $e) {
+                $out['errors'][] = $e->getMessage();
+            }
+        }
         $sample('/alarm/job', '/alarm/job', $desc, ['alarm_time']);
         $sample('/alarm/system', '/alarm/system', $desc, ['alarm_time']);
         $sample('/logs/job', '/logs/job', $desc, ['op_time']);
@@ -454,6 +469,25 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
         } catch (\RuntimeException $e) {
             return 'login: ' . $e->getMessage();
         }
+    }
+
+    /**
+     * Verification history of one restore point (GET /backup_data/verify_history).
+     *
+     * @return array{rows: list<array<string, mixed>>, error: string}
+     */
+    public function verifications(string $timepointUuid): array
+    {
+        if (($error = $this->ensureLogin()) !== '') {
+            return ['rows' => [], 'error' => $error];
+        }
+        try {
+            $data = $this->client->get('/backup_data/verify_history', ['timepoint_uuid' => $timepointUuid]);
+        } catch (\RuntimeException $e) {
+            return ['rows' => [], 'error' => $e->getMessage()];
+        }
+        $rows = is_array($data) ? ($data['rows'] ?? ($data['list'] ?? [])) : [];
+        return ['rows' => is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [], 'error' => ''];
     }
 
     // --- AuditSource: live reads for the audit evidence page (0.3.0) -------------------------

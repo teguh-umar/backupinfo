@@ -25,7 +25,8 @@ $full = static function (): RouteT {
     $t = new RouteT();
     $t->routes = [
         'POST /backup_data/items/list' => [rows([['item_name' => 'VM-A', 'module_type_des' => 'Virtualization', 'timepoint_uuid' => 'tp-1', 'task_name' => 'J-A']])],
-        'GET /jobs/history'            => [rows([['job_name' => 'J-A', 'job_status' => 'Failure', 'job_status_value' => 4]])],
+        'GET /jobs/history'            => [rows([['history_uuid' => 'uuid-1', 'job_name' => 'J-A', 'job_status' => 'Failure', 'job_status_value' => 4]])],
+        'GET /jobs/history/uuid-1'     => [okd(['list' => [['vm_name' => 'VM-A', 'task_status' => 'Failed']]])],
         'GET /alarm/job'               => [rows([['alarm_id' => 1, 'alarm_level' => 3, 'content' => 'backup failed']])],
         'GET /alarm/system'            => [rows([['alarm_id' => 2]])],
         'GET /logs/job'                => [rows([['id' => 3]])],
@@ -44,7 +45,7 @@ $full = static function (): RouteT {
 $t = $full();
 $s = (new VinchinSource(new Client('h', $t, 'K'), false, fn () => []))->probeAudit(5, 'VM-A');
 $expected = [
-    'failed runs (/jobs/history, job_status 4)', '/alarm/job', '/alarm/system', '/logs/job', '/logs/system',
+    'failed runs (/jobs/history, job_status 4)', '/jobs/history/{uuid}', '/alarm/job', '/alarm/system', '/logs/job', '/logs/system',
     '/backupmanager/report/vm', '/industry/report', '/backup_data/verify_history', '/backup_data/virus_history', '/copy/job/history',
 ];
 check('audit: every endpoint has a raw sample', array_keys($s['raw']) === $expected, json_encode(array_keys($s['raw'])));
