@@ -7,14 +7,19 @@ use GlpiPlugin\Backupinfo\Source\BackupObject;
 use GlpiPlugin\Backupinfo\Source\BackupSource;
 use GlpiPlugin\Backupinfo\Source\PartialFetch;
 use GlpiPlugin\Backupinfo\Source\ProbeableSource;
+use GlpiPlugin\Backupinfo\Source\Run;
+use GlpiPlugin\Backupinfo\Source\RunHistorySource;
 
-final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeableSource, PartialFetch
+final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeableSource, PartialFetch, RunHistorySource
 {
     /** true when the last fetch() came from the job-history fallback (recent VM jobs only) */
     private bool $partial = false;
 
     /** @var list<string> */
     private array $scheduleErrors = [];
+
+    /** login mode: true once this instance holds a token */
+    private bool $loggedIn = false;
 
     private const ITEMS_PATH   = '/backup_data/items/list';
     private const HISTORY_PATH = '/jobs/history';
@@ -55,6 +60,7 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
         $this->partial = false;
         if ($this->useLogin) {
             $this->client->login();
+            $this->loggedIn = true;
         }
 
         try {
@@ -321,5 +327,130 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
         }
 
         return $out;
+    }
+
+    public function runs(callable $pageKnown, int $maxPages, int $pageSize = 100): array
+    {
+        $out = ['runs' => [], 'errors' => []];
+        if (($error = $this->ensureLogin()) !== '') {
+            $out['errors'][] = $error;
+            return $out;
+        }
+
+        $stop = static function (array $batch) use ($pageKnown): bool {
+            $uuids = [];
+            foreach ($batch as $row) {
+                $uuid = is_array($row) ? trim((string) ($row['history_uuid'] ?? '')) : '';
+                if ($uuid !== '') {
+                    $uuids[] = $uuid;
+                }
+            }
+            return $pageKnown($uuids);
+        };
+        $max  = max(1, $maxPages) * $pageSize;
+        $rows = null;
+        foreach ([['sort' => 'start_time', 'order' => 'desc'], ['order' => 'desc']] as $params) {
+            try {
+                $rows = $this->client->getPaged(self::HISTORY_PATH, ['search' => ''] + $params, $pageSize, $max, $stop);
+                break;
+            } catch (\RuntimeException $e) {
+                $last = $e->getMessage();
+            }
+        }
+        if ($rows === null) {
+            $out['errors'][] = $last;
+            return $out;
+        }
+
+        $seen = [];
+        foreach ($rows as $row) {
+            $run = RunMapper::map($row);
+            if ($run !== null && !isset($seen[$run->historyUuid])) {
+                $seen[$run->historyUuid] = true;
+                $out['runs'][] = $run;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * GET /jobs/history/{uuid}. The doc gives data.list[] with module-specific fields (vm_name for VMs,
+     * display_name for OS, db_name for databases), some under `info`. Not sampled on the VM yet, so any
+     * other shape is an error line, never a throw.
+     */
+    public function runItems(string $historyUuid): array
+    {
+        $path = self::HISTORY_PATH . '/' . rawurlencode($historyUuid);
+        if (($error = $this->ensureLogin()) !== '') {
+            return ['items' => [], 'error' => $error];
+        }
+        try {
+            $data = $this->client->get($path);
+        } catch (\RuntimeException $e) {
+            return ['items' => [], 'error' => $e->getMessage()];
+        }
+        $list = is_array($data) ? ($data['list'] ?? ($data['rows'] ?? (array_is_list($data) ? $data : null))) : null;
+        if (!is_array($list)) {
+            return ['items' => [], 'error' => $path . ': unexpected answer (no list)'];
+        }
+
+        $items = [];
+        foreach ($list as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $f    = (is_array($entry['info'] ?? null) ? $entry['info'] : []) + $entry;
+            $name = '';
+            foreach (['vm_name', 'display_name', 'db_name', 'item_name', 'agent_name'] as $key) {
+                if (is_scalar($f[$key] ?? null) && trim((string) $f[$key]) !== '') {
+                    $name = trim((string) $f[$key]);
+                    break;
+                }
+            }
+            if ($name === '') {
+                continue;
+            }
+            $status  = (string) ($f['task_status'] ?? ($f['vm_status'] ?? ($f['item_status'] ?? '')));
+            $items[] = [
+                'vm_name' => mb_substr($name, 0, 255),
+                'status'  => RunMapper::status($status),
+                'error'   => mb_substr(trim((string) ($f['error_code_des'] ?? ($f['error_code'] ?? ''))), 0, 255),
+            ];
+        }
+        return ['items' => $items, 'error' => ''];
+    }
+
+    public function jobAlarms(string $sinceTime, int $max = 2000): array
+    {
+        if (($error = $this->ensureLogin()) !== '') {
+            return ['rows' => [], 'error' => $error];
+        }
+        $since = ItemMapper::parseTime($sinceTime) ?? 0;
+        $older = static function (mixed $row) use ($since): bool {
+            $t = is_array($row) ? ItemMapper::parseTime($row['alarm_time'] ?? null) : null;
+            return $t !== null && $t < $since;
+        };
+        try {
+            $rows = $this->client->getPaged('/alarm/job', ['search' => '', 'sort' => 'alarm_time', 'order' => 'desc'], 100, $max,
+                static fn(array $batch): bool => $batch !== [] && $older(end($batch)));
+        } catch (\RuntimeException $e) {
+            return ['rows' => [], 'error' => $e->getMessage()];
+        }
+        return ['rows' => array_values(array_filter($rows, static fn($row): bool => is_array($row) && !$older($row))), 'error' => ''];
+    }
+
+    /** Login mode: one login per instance before the first read. Returns an error line, or ''. */
+    private function ensureLogin(): string
+    {
+        if (!$this->useLogin || $this->loggedIn) {
+            return '';
+        }
+        try {
+            $this->client->login();
+            $this->loggedIn = true;
+            return '';
+        } catch (\RuntimeException $e) {
+            return 'login: ' . $e->getMessage();
+        }
     }
 }

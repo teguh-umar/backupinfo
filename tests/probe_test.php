@@ -3,7 +3,7 @@
 require __DIR__ . '/bootstrap.php';
 
 foreach ([
-    'Source/BackupObject', 'Source/BackupSource', 'Source/ProbeableSource', 'Source/AuditProbeableSource', 'Source/PartialFetch', 'Source/Registry',
+    'Source/BackupObject', 'Source/BackupSource', 'Source/ProbeableSource', 'Source/AuditProbeableSource', 'Source/RunHistorySource', 'Source/PartialFetch', 'Source/Registry',
     'Vinchin/Signer', 'Vinchin/Transport', 'Vinchin/CurlTransport', 'Vinchin/Client',
     'Vinchin/ItemMapper', 'Vinchin/JobHistoryMapper', 'Vinchin/ScheduleMapper', 'Vinchin/VinchinSource',
     'Matching/AssetLookup', 'Matching/Matcher', 'Rpo', 'Probe',
