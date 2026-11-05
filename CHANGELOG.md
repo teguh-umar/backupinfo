@@ -1,5 +1,11 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.4.0-rc2 — 2026-11-05 (release candidate)
+
+- **Risk Register codes are now `BCKP-COVERAGE`, `BCKP-RESTORE` and `BCKP-REPEAT`.** The rc1 codes
+  started with "BI-", which reads as Business Intelligence.
+  - Findings written by rc1 are renamed at the next sync. Their status and links are kept.
+
 ## 0.4.0-rc1 — 2026-11-05 (release candidate)
 
 Follow-up of backup failures in GLPI (stage 3). **Everything is off until switched on** in
@@ -21,9 +27,9 @@ Setup › Backup Info › Tickets and findings.
   when a template assigns nobody or has no requester.
 - **Risk Register findings**, when Risk Register is active. There is one finding per entity and
   code, mapped to ISO 27001 A.8.13:
-  - BI-COVERAGE: not protected;
-  - BI-RESTORE: no passed restore test in its interval;
-  - BI-REPEAT: a Problem is open.
+  - BI-COVERAGE (BCKP-COVERAGE from rc2): not protected;
+  - BI-RESTORE (BCKP-RESTORE from rc2): no passed restore test in its interval;
+  - BI-REPEAT (BCKP-REPEAT from rc2): a Problem is open.
   - The status someone sets is kept. When the signal goes, a "Signal cleared" note is added.
 - **Tab 4 Failures** shows the Incident and the Problem of each failure.
 

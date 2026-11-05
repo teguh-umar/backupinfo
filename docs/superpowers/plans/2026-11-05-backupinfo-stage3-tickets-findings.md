@@ -34,9 +34,9 @@ Delivery: Claude implements inline, TDD, one commit per task (as for 0.3.0). Eve
 
    | Code | Raised (per entity) when |
    |---|---|
-   | `BI-COVERAGE` | an in-scope Computer is Not found / Stale after the sync |
-   | `BI-RESTORE` | an in-scope Computer has no passed restore test within its interval |
-   | `BI-REPEAT` | a plugin Problem is open for a Computer |
+   | `BCKP-COVERAGE` | an in-scope Computer is Not found / Stale after the sync |
+   | `BCKP-RESTORE` | an in-scope Computer has no passed restore test within its interval |
+   | `BCKP-REPEAT` | a plugin Problem is open for a Computer |
 5. **Off until enabled**: Incident/Problem and Findings have separate switches. Enabling stores `tickets_since` = now.
 6. **Never fails the sync**: each writer is wrapped; errors go to `backupinfo.log` and one log line.
 
@@ -69,7 +69,7 @@ Delivery: Claude implements inline, TDD, one commit per task (as for 0.3.0). Eve
    - one Incident is created, linked to the Computer;
    - a second sync creates nothing.
 4. Three failures within 30 days give one Problem, with the 3 Incidents linked.
-5. With Risk Register active: BI-RESTORE appears for a Computer without a restore test, and the status the user sets is kept by the next sync.
+5. With Risk Register active: BCKP-RESTORE appears for a Computer without a restore test, and the status the user sets is kept by the next sync.
 
 ## User answers (2026-11-05)
 

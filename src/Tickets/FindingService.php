@@ -56,17 +56,22 @@ final class FindingService
         $cov     = AuditPage::coverage($computers, $objects, Rpo::fromConfig(), [], $nowS)['rows'];
         $res     = AuditPage::restore($computers, AuditData::restoreTests($list, $today), RestoreInterval::overrides($list),
             RestoreInterval::globalMonths(), $today, $today)['rows'];
-        $signals = ['BI-COVERAGE' => [], 'BI-RESTORE' => [], 'BI-REPEAT' => array_keys(TicketService::openProblems())];
+        $signals = ['BCKP-COVERAGE' => [], 'BCKP-RESTORE' => [], 'BCKP-REPEAT' => array_keys(TicketService::openProblems())];
         foreach ($list as $i => $c) {
             if (($cov[$i][1] ?? 'protected') !== 'protected') {
-                $signals['BI-COVERAGE'][] = $c;
+                $signals['BCKP-COVERAGE'][] = $c;
             }
             if (in_array($res[$i][4] ?? '', [RestoreInterval::NONE, RestoreInterval::OVERDUE], true)) {
-                $signals['BI-RESTORE'][] = $c;
+                $signals['BCKP-RESTORE'][] = $c;
             }
         }
 
         $finding  = new \GlpiPlugin\Riskregister\Finding();
+        // 0.4.0-rc2: rc1 wrote BI-* codes (BI reads as Business Intelligence): renamed once, status kept
+        foreach ($finding->find(['assessment_ref' => ['LIKE', self::REF . 'BI-%']]) as $old) {
+            $code = 'BCKP-' . substr((string) $old['code'], 3);
+            $finding->update(['id' => (int) $old['id'], 'code' => $code, 'assessment_ref' => self::REF . $code]);
+        }
         $existing = [];
         foreach ($finding->find(['assessment_ref' => ['LIKE', self::REF . '%'], 'is_deleted' => 0]) as $row) {
             $existing[$row['entities_id'] . '|' . $row['code']] = true;

@@ -64,13 +64,16 @@ $conf = $read('front/config.php');
 check('setup: enabling stores the start time; dry run behind config UPDATE', str_contains($conf, 'SuiteConfig::withTicketsSince(') && str_contains($conf, 'TicketService::run(true, time())'));
 
 // --- findings
-$plan = FindingPlan::plan(['BI-COVERAGE' => [11, 12, 11], 'BI-RESTORE' => [13], 'BI-X' => [11]], [11 => 1, 12 => 2, 13 => 1], ['1|BI-REPEAT' => true, '1|BI-COVERAGE' => true]);
+$plan = FindingPlan::plan(['BCKP-COVERAGE' => [11, 12, 11], 'BCKP-RESTORE' => [13], 'BCKP-X' => [11]], [11 => 1, 12 => 2, 13 => 1], ['1|BCKP-REPEAT' => true, '1|BCKP-COVERAGE' => true]);
 $key  = static fn (array $f): string => $f['entities_id'] . '|' . $f['code'] . '|' . implode(',', $f['computers']) . '|' . ($f['cleared'] ? 'c' : '');
-check('findings: one per entity and code, never recursive across entities, unknown codes ignored', array_map($key, $plan) === ['1|BI-COVERAGE|11|', '2|BI-COVERAGE|12|', '1|BI-RESTORE|13|', '1|BI-REPEAT||c'], json_encode(array_map($key, $plan)));
-check('findings: Computer without an entity skipped', FindingPlan::plan(['BI-RESTORE' => [99]], [], []) === []);
-check('findings: content lists names, escaped', str_contains(FindingPlan::content('BI-RESTORE', ['<SRV>']), '&lt;SRV&gt;'));
+check('findings: one per entity and code, never recursive across entities, unknown codes ignored', array_map($key, $plan) === ['1|BCKP-COVERAGE|11|', '2|BCKP-COVERAGE|12|', '1|BCKP-RESTORE|13|', '1|BCKP-REPEAT||c'], json_encode(array_map($key, $plan)));
+check('findings: Computer without an entity skipped', FindingPlan::plan(['BCKP-RESTORE' => [99]], [], []) === []);
+check('findings: content lists names, escaped', str_contains(FindingPlan::content('BCKP-RESTORE', ['<SRV>']), '&lt;SRV&gt;'));
 $fs = $read('src/Tickets/FindingService.php');
 check('findings service: guarded, never sets status, never recursive, A.8.13 linked', str_contains($fs, "isPluginActive('riskregister')") && !str_contains($fs, "'status'") && str_contains($fs, "'is_recursive'   => 0") && str_contains($fs, "'A.8.13'"));
 check('cron: findings after tickets', strpos($read('src/Cron.php'), 'self::raiseTickets($now, $log);') < strpos($read('src/Cron.php'), 'self::raiseFindings($now, $log);'));
+
+check('findings: rc1 BI-* codes renamed to BCKP-* once', str_contains($fs, "self::REF . 'BI-%'") && str_contains($fs, "'BCKP-' . substr("));
+check('findings: codes are BCKP-*', array_keys(FindingPlan::CODES) === ['BCKP-COVERAGE', 'BCKP-RESTORE', 'BCKP-REPEAT']);
 
 done();
