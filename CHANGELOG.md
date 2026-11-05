@@ -1,5 +1,21 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.3.0-rc5 — 2026-11-05 (release candidate)
+
+- **Runs are linked to Computers when read, not when stored.** A VM matched or pinned later (Backup
+  objects › Pin) now brings its older runs into tabs 3 and 4. Stored runs still never change.
+  The sync also keeps the VM name of runs whose objects are not matched yet.
+- **Off-site copies and activity are stored in GLPI.** These are copy runs, job logs, system logs and
+  system alarms.
+  - They are read by the sync and stored once, never changed, so they outlive Vinchin's retention.
+  - The first sync reads back up to 400 days, bounded by each list's row cap.
+  - They are kept as long as runs (Setup: runs kept, months).
+  - The cron log shows `events stored copy N, joblog N, syslog N, sysalarm N`.
+- Tabs 6 and 7 read the stored events. Only tab 2 (Coverage) is still read live.
+- **Probe › Sample audit endpoints** adds cards for backup targets: `/backupmanager/report/storage`,
+  `/storages`, `/tapes/job` and `/tapes`. The `/jobs/history/{uuid}` sample now prefers a VM job's
+  failed run.
+
 ## 0.3.0-rc4 — 2026-11-04 (release candidate)
 
 - The audit page shows one tab per section instead of seven stacked cards.
