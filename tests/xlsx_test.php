@@ -3,10 +3,8 @@
 require __DIR__ . '/bootstrap.php';
 
 require BI_ROOT . '/src/Xlsx.php';
-require BI_ROOT . '/src/AuditCache.php';
 require BI_ROOT . '/src/AuditPage.php';
 
-use GlpiPlugin\Backupinfo\AuditCache;
 use GlpiPlugin\Backupinfo\AuditPage;
 use GlpiPlugin\Backupinfo\Xlsx;
 
@@ -76,41 +74,6 @@ if (!$ok) {
 }
 @unlink($tmp);
 
-// --- live-read cache
-$fake = new class {
-    public array $store = [];
-    public int $sets = 0;
-    public function get(string $k, mixed $d = null): mixed { return $this->store[$k] ?? $d; }
-    public function set(string $k, mixed $v, int $ttl): bool { $this->sets++; $this->store[$k] = $v; return true; }
-};
-$calls = 0;
-$read1 = function () use (&$calls): array { $calls++; return ['rows' => [['a' => 1]], 'error' => '']; };
-$k     = AuditCache::key(3, 'jobLogs', ['2026-10-01 00:00:00', '2026-10-31 23:59:59']);
-check('cache key: PSR-16 safe chars only', (bool) preg_match('/^[A-Za-z0-9_.]+$/', $k) && strlen($k) <= 64, $k);
-check('cache key differs per connection and period', $k !== AuditCache::key(4, 'jobLogs', ['2026-10-01 00:00:00', '2026-10-31 23:59:59'])
-    && $k !== AuditCache::key(3, 'jobLogs', ['2026-09-01 00:00:00', '2026-09-30 23:59:59']));
-AuditCache::remember($fake, $k, 600, $read1);
-$r = AuditCache::remember($fake, $k, 600, $read1);
-check('cache: second read served from cache', $calls === 1 && $r['rows'] === [['a' => 1]]);
-$calls = 0;
-$bad   = function () use (&$calls): array { $calls++; return ['rows' => [], 'error' => 'HTTP 500']; };
-AuditCache::remember($fake, 'k2', 600, $bad);
-AuditCache::remember($fake, 'k2', 600, $bad);
-check('cache: a failed read is never cached', $calls === 2);
-$calls = 0;
-AuditCache::remember(null, 'k3', 600, $read1);
-check('cache: no cache -> plain read', $calls === 1);
-$broken = new class {
-    public function get(string $k, mixed $d = null): mixed { throw new RuntimeException('down'); }
-    public function set(string $k, mixed $v, int $ttl): bool { throw new RuntimeException('down'); }
-};
-check('cache: a broken cache falls back to the read', AuditCache::remember($broken, 'k4', 600, $read1)['rows'] === [['a' => 1]]);
-check('cache: garbage in cache ignored', AuditCache::remember(new class {
-    public function get(string $k, mixed $d = null): mixed { return 'junk'; }
-    public function set(string $k, mixed $v, int $ttl): bool { return true; }
-}, 'k5', 600, $read1)['error'] === '');
-check('ttl: closed period cached longer than an open one', AuditCache::ttl('2026-10-31 23:59:59', strtotime('2026-11-04 10:00:00')) > AuditCache::ttl('2026-11-30 23:59:59', strtotime('2026-11-04 10:00:00')));
-
 // --- scope note: why a page is empty
 check('scope note: nothing marked', str_contains((string) AuditPage::scopeNote(0, 0), 'No Computer is marked'));
 check('scope note: marked but outside the active entities', str_contains((string) AuditPage::scopeNote(42, 0), '42 Computers are marked') && str_contains((string) AuditPage::scopeNote(42, 0), 'entit'));
@@ -125,7 +88,7 @@ check('page: sections load one by one after the page', str_contains($page, "\$_G
 check('page: fragment exits before Html::header', ($f = strpos($page, "\$_GET['section']")) !== false && $f < strpos($page, 'Html::header('));
 check('page: scope note shown', str_contains($page, 'AuditPage::scopeNote('));
 $data = $read('src/AuditData.php');
-check('data: live reads go through the cache', str_contains($data, 'AuditCache::remember('));
+check('data: no live read on the page (snapshots instead)', !str_contains($data, 'AuditCache') && str_contains($data, 'DbSnapshotStore'));
 check('data: no live read for coverage or copies when nothing is in scope', str_contains($data, '$this->computers === [] ? [] :'));
 check('data: total before the entity filter kept', str_contains($data, 'public readonly int $mandatoryTotal;'));
 

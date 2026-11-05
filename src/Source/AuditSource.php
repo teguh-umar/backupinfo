@@ -7,14 +7,14 @@ namespace GlpiPlugin\Backupinfo\Source;
  * $from and $to are inclusive. Each returns array{rows: list<array<string, mixed>>, error: string}
  * and never throws: a refused call is the `error` line (no secret). Texts are plain (HTML stripped).
  * The four event reads return Event::make() rows and are stored by the sync (EventSync); the
- * other two are read live.
+ * other two are stored by the sync as daily snapshots (SnapshotSync).
  */
 interface AuditSource
 {
-    /** Every VM on the virtualization platforms, with its backup state (protected or not). Live. */
+    /** Every VM on the virtualization platforms, with its backup state (protected or not). Daily snapshot. */
     public function platformVms(): array;
 
-    /** Where backups are written: Target::make() rows. Live. */
+    /** Where backups are written: Target::make() rows. Daily snapshot. */
     public function targets(): array;
 
     /** Off-site copy / replica runs in the period, one Event "copy" per copied VM. */

@@ -152,6 +152,21 @@ function plugin_backupinfo_install()
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
     }
 
+    // 0.3.0-rc7: daily state of what the backup system only shows "as of now" (targets, platform VMs)
+    if (!$DB->tableExists('glpi_plugin_backupinfo_snapshots')) {
+        $DB->doQuery("CREATE TABLE `glpi_plugin_backupinfo_snapshots` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT,
+            `connections_id` int unsigned NOT NULL DEFAULT 0,
+            `kind` varchar(16) NOT NULL DEFAULT '',
+            `snap_date` date DEFAULT NULL,
+            `taken_at` timestamp NULL DEFAULT NULL,
+            `data` mediumtext,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `unicity` (`connections_id`, `kind`, `snap_date`),
+            KEY `kind_taken` (`kind`, `taken_at`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    }
+
     // rc6: events are stored in the common Event shape. rc5 stored Vinchin rows as they came: clear
     // them once (only test installs had them); the next sync reads them back from the backup system.
     $fmt = Config::getConfigurationValues('plugin:backupinfo', ['events_format']);

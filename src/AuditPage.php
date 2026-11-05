@@ -107,7 +107,7 @@ final class AuditPage
         return [
             'columns' => ['Computer', 'Status', 'Last backup', 'Backup objects', 'Platform report'],
             'rows'    => $rows,
-            'note'    => __('Status as of now (live), not at the end of the period. "Platform report" is the backup system\'s own list of VMs on the hypervisors.', 'backupinfo'),
+            'note'    => __('Backup status as of now, not at the end of the period. "Platform report" is the backup system\'s own list of VMs on the hypervisors, from the newest daily snapshot in the period.', 'backupinfo'),
         ];
     }
 
@@ -279,16 +279,32 @@ final class AuditPage
     }
 
     /** @param list<array<string, string>> $targets Target::make() rows of every connection */
-    public static function targets(array $targets, array $connections): array
+    /**
+     * @param array<int, array{taken_at: string, rows: list<array<string, string>>}> $latest newest snapshot of the period per connection
+     * @param array<int, array{taken_at: string, rows: list<array<string, string>>}> $first  oldest snapshot of the period per connection
+     * @param array<int, string> $connections id => name
+     */
+    public static function targets(array $latest, array $first, array $connections): array
     {
         $rows = [];
-        foreach ($targets as $t) {
-            $rows[] = [$t['kind'], $t['name'], $t['type'], $t['node'], $t['total'], $t['used'], $t['free'], $t['online'], $t['jobs'], $t['detail']];
+        $asOf = [];
+        foreach ($latest as $c => $snap) {
+            $start = [];
+            foreach ($first[$c]['rows'] ?? [] as $t) {
+                $start[$t['kind'] . '|' . $t['name']] = $t['used'];
+            }
+            $asOf[] = ($connections[$c] ?? '#' . $c) . ' ' . $snap['taken_at'];
+            foreach ($snap['rows'] as $t) {
+                $rows[] = [$t['kind'], $t['name'], $t['type'], $t['node'], $t['total'], $start[$t['kind'] . '|' . $t['name']] ?? '',
+                    $t['used'], $t['free'], $t['online'], $t['jobs'], $t['detail'], $snap['taken_at']];
+            }
         }
         return [
-            'columns' => ['Kind', 'Name', 'Type', 'Node', 'Total', 'Used', 'Free', 'Online', 'Jobs writing to it', 'Detail'],
+            'columns' => ['Kind', 'Name', 'Type', 'Node', 'Total', 'Used at period start', 'Used', 'Free', 'Online', 'Jobs writing to it', 'Detail', 'As of'],
             'rows'    => $rows,
-            'note'    => sprintf(__('Where backups are written (disk, NAS, tape), as of now, read live from: %s.', 'backupinfo'), implode(', ', $connections)),
+            'note'    => $latest === []
+                ? __('No snapshot of the backup targets in this period. The sync stores one a day (from 0.3.0-rc7).', 'backupinfo')
+                : sprintf(__('Where backups are written (disk, NAS, tape), as stored by the daily sync, latest in the period: %s.', 'backupinfo'), implode(', ', $asOf)),
         ];
     }
 }

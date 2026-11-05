@@ -7,11 +7,13 @@ use GlpiPlugin\Backupinfo\Source\Registry;
 use GlpiPlugin\Backupinfo\Sync\DbObjectStore;
 use GlpiPlugin\Backupinfo\Sync\DbEventStore;
 use GlpiPlugin\Backupinfo\Sync\DbRunStore;
+use GlpiPlugin\Backupinfo\Sync\DbSnapshotStore;
 use Session;
 
 /**
  * Data for the audit evidence page (needs GLPI). In scope = the mandatory ("Wajib Backup") Computers
- * in the user's active entities. Sections 3-5 come from GLPI tables; 1, 2, 6 and 7 are read live.
+ * in the user's active entities. Every section reads GLPI tables (0.3.0-rc7): what the backup system only shows "as of now"
+ * (targets, platform VMs) comes from the daily snapshots the sync stores.
  */
 final class AuditData
 {
@@ -54,14 +56,14 @@ final class AuditData
 
         $table = match ($key) {
             'policy'     => AuditPage::policy($this->computers, $this->objects(), Rpo::fromConfig()),
-            'coverage'   => AuditPage::coverage($this->computers, $this->objects(), Rpo::fromConfig(), ($this->computers === [] ? [] : $this->live('platformVms', [], $errors)), time()),
+            'coverage'   => AuditPage::coverage($this->computers, $this->objects(), Rpo::fromConfig(), ($this->computers === [] ? [] : $this->snapshotRows('platformvm')), time()),
             'population' => AuditPage::population($this->computers, $this->runs ??= $this->readRuns($ids, $from, $to)),
             'failures'   => AuditPage::failures($this->computers, $this->runs ??= $this->readRuns($ids, $from, $to)),
             'restore'    => AuditPage::restore($this->computers, self::tests($ids, substr($to, 0, 10)), RestoreInterval::overrides($ids),
                 RestoreInterval::globalMonths(), substr($from, 0, 10), substr($to, 0, 10)),
             'copies'     => AuditPage::copies($this->computers, $this->objects(), ($this->computers === [] ? [] : $this->events('copy', $from, $to))),
             'activity'   => $this->activity($from, $to, $errors),
-            'targets'    => AuditPage::targets($this->live('targets', [], $errors), $this->connectionNames()),
+            'targets'    => AuditPage::targets($this->snapshots('target', true), $this->snapshots('target', false), $this->connectionIdNames()),
             default      => throw new \InvalidArgumentException('unknown section'),
         };
         return $table + ['errors' => $errors];
@@ -113,26 +115,30 @@ final class AuditData
         return (new DbEventStore())->rows($kind, $from, $to, array_keys($this->sources()));
     }
 
-    /** Merged rows of one AuditSource method over every active connection (cached a short while). */
-    private function live(string $method, array $args, array &$errors): array
+    /**
+     * Per active connection, the newest ($last) or oldest snapshot of $kind taken in the period.
+     *
+     * @return array<int, array{taken_at: string, rows: list<array<string, mixed>>}>
+     */
+    private function snapshots(string $kind, bool $last): array
     {
-        global $GLPI_CACHE;
+        return (new DbSnapshotStore())->pick($kind, array_keys($this->sources()), $this->period['from'], $this->period['to'], $last);
+    }
 
+    /** Rows of the newest snapshot of $kind in the period, every connection merged. */
+    private function snapshotRows(string $kind): array
+    {
         $rows = [];
-        $ttl  = AuditCache::ttl($this->period['to'], time());
-        foreach ($this->sources() as $id => $s) {
-            $res = AuditCache::remember(
-                is_object($GLPI_CACHE) ? $GLPI_CACHE : null,
-                AuditCache::key($id, $method, $args),
-                $ttl,
-                static fn(): array => $s['source']->$method(...$args)
-            );
-            if ($res['error'] !== '') {
-                $errors[] = $s['name'] . ': ' . $res['error'];
-            }
-            array_push($rows, ...$res['rows']);
+        foreach ($this->snapshots($kind, true) as $snap) {
+            array_push($rows, ...$snap['rows']);
         }
         return $rows;
+    }
+
+    /** @return array<int, string> active connections, id => name */
+    private function connectionIdNames(): array
+    {
+        return array_map(static fn(array $s): string => $s['name'], $this->sources());
     }
 
     /** @return array<int, array{name: string, source: AuditSource}> */

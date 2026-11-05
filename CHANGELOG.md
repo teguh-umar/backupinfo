@@ -1,5 +1,18 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.3.0-rc7 — 2026-11-05 (release candidate)
+
+- **The audit page no longer calls the backup system.** Every tab reads GLPI, so the page loads
+  faster and still works when the backup system cannot be reached.
+- **Daily snapshots.** Each sync stores today's backup targets and platform VMs, one snapshot per
+  connection and day; a later sync on the same day replaces it. Retention follows "keep runs (months)".
+  A read that fails keeps the last good snapshot.
+- **8. Backup targets** shows the newest snapshot inside the chosen period, so a past period shows the
+  targets as they were at its end. New columns: **Used at period start** (from the oldest snapshot
+  of the period) and **As of**. A period before the first snapshot says so.
+- **2. Coverage** takes its platform report from the same snapshots.
+- The short-lived cache of live reads (rc4) is removed.
+
 ## 0.3.0-rc6 — 2026-11-05 (release candidate)
 
 Groundwork for many backup brands. The plan covers Vinchin, NetBackup, Backup Exec, Veeam, Acronis,

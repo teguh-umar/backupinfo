@@ -15,6 +15,8 @@ use GlpiPlugin\Backupinfo\Sync\DbObjectStore;
 use GlpiPlugin\Backupinfo\Sync\DbEventStore;
 use GlpiPlugin\Backupinfo\Sync\DbRunStore;
 use GlpiPlugin\Backupinfo\Sync\EventSync;
+use GlpiPlugin\Backupinfo\Sync\DbSnapshotStore;
+use GlpiPlugin\Backupinfo\Sync\SnapshotSync;
 use GlpiPlugin\Backupinfo\Sync\RunSync;
 use GlpiPlugin\Backupinfo\Sync\SyncService;
 use GlpiPlugin\Backupinfo\Sync\VerifyImport;
@@ -133,6 +135,7 @@ final class Cron extends \CommonGLPI
 
         self::storeRuns($out['results'], $sources, $now, $log);
         self::storeEvents($out['results'], $sources, $now, $log);
+        self::storeSnapshots($out['results'], $sources, $now, $log);
         self::importVerifications($out['results'], $sources, $log);
 
         $fieldsError = '';
@@ -211,6 +214,46 @@ final class Cron extends \CommonGLPI
             $store->purgeOlderThan((int) ($cfg['run_keep_months'] ?? 36), $now);
         } catch (\Throwable $e) {
             Toolbox::logInFile('backupinfo', 'Events purge: ' . SyncService::errorLine($e) . "\n");
+        }
+    }
+
+    /**
+     * Audit evidence (0.3.0-rc7): today's backup targets and platform VMs of every connection whose
+     * object sync succeeded (one snapshot a day), then the retention purge. Never fails the sync.
+     *
+     * @param list<array{id:int,name:string,status:string}> $results
+     * @param array<int, mixed> $sources connection id => source
+     */
+    private static function storeSnapshots(array $results, array $sources, int $now, callable $log): void
+    {
+        $store = new DbSnapshotStore();
+        foreach ($results as $r) {
+            $source = $sources[$r['id']] ?? null;
+            if ($r['status'] !== 'ok' || !($source instanceof AuditSource)) {
+                continue;
+            }
+            try {
+                $res = SnapshotSync::run((int) $r['id'], $source, $store, $now);
+                $log(sprintf('%s: snapshot stored %s', $r['name'], implode(', ', array_map(
+                    static fn(string $k, int $n): string => "$k $n",
+                    array_keys($res['stored']),
+                    $res['stored']
+                ))));
+                if ($res['errors'] !== []) {
+                    Toolbox::logInFile('backupinfo', sprintf("Snapshot %s: %s\n", $r['name'], implode('; ', $res['errors'])));
+                    $log(sprintf('%s: %d snapshot read error(s), see backupinfo.log', $r['name'], count($res['errors'])));
+                }
+            } catch (\Throwable $e) {
+                $line = sprintf('Snapshot %s: %s', $r['name'], SyncService::errorLine($e));
+                Toolbox::logInFile('backupinfo', $line . "\n");
+                $log($line);
+            }
+        }
+        try {
+            $cfg = Config::getConfigurationValues(SuiteConfig::CONTEXT, ['run_keep_months']);
+            $store->purgeOlderThan((int) ($cfg['run_keep_months'] ?? 36), $now);
+        } catch (\Throwable $e) {
+            Toolbox::logInFile('backupinfo', 'Snapshot purge: ' . SyncService::errorLine($e) . "\n");
         }
     }
 

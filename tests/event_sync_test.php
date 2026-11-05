@@ -101,6 +101,6 @@ check('audit: copies and activity read from GLPI', str_contains($data, "\$this->
 check('audit: system log and alarms still behind config READ', str_contains($data, 'Session::haveRight(RightDefinition::CONFIG, READ)'));
 check('audit: no live read for copies or activity', !str_contains($data, "live('copyRuns'") && !str_contains($data, "live('jobLogs'"));
 $page = $read('front/audit.php');
-check('page: only coverage and targets are live', str_contains($page, "\$live    = ['coverage', 'targets'];"));
+check('page: no section is read live', str_contains($page, "\$live    = [];"));
 
 done();
