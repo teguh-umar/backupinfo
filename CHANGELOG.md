@@ -1,5 +1,10 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.3.0 — 2026-11-05
+
+Audit evidence release (ISO 27001, internal audit, ICOFR). Same code as 0.3.0-rc7, confirmed on the
+test VM. The entries below, rc1 to rc7, are its content.
+
 ## 0.3.0-rc7 — 2026-11-05 (release candidate)
 
 - **The audit page no longer calls the backup system.** Every tab reads GLPI, so the page loads
