@@ -33,6 +33,10 @@ $full = static function (): RouteT {
         'GET /logs/system'             => [rows([['id' => 4, 'create_user' => 'admin', 'password' => 'p']])],
         'GET /backupmanager/report/vm' => [rows([['vm_name' => 'VM-A', 'backup_status' => 1]])],
         'GET /industry/report'         => [rows([['report_uuid' => 'r1']])],
+        'GET /backupmanager/report/storage' => [rows([['storage_name' => 'Local Disk 1', 'storage_type' => 'Local disk', 'total' => 100, 'used' => 90]])],
+        'GET /storages'                => [rows([['name' => 'NAS-1']])],
+        'GET /tapes/job'               => [rows([['job_name' => 'TAPE-1', 'target_tape_group' => 'G1']])],
+        'GET /tapes'                   => [rows([['tape_name' => 'T001']])],
         'GET /backup_data/verify_history' => [rows([['timepoint' => '2026-11-01', 'integrity_check_status' => 1]])],
         'GET /backup_data/virus_history'  => [rows([['status' => 1, 'virus_file_num' => 0]])],
         'GET /jobs'                    => [rows([['job_name' => 'J-A', 'job_uuid' => 'ua', 'job_type' => 'Backup'], ['job_name' => 'COPY-1', 'job_uuid' => 'uc', 'job_type' => 'Backup Copy']])],
@@ -46,7 +50,8 @@ $t = $full();
 $s = (new VinchinSource(new Client('h', $t, 'K'), false, fn () => []))->probeAudit(5, 'VM-A');
 $expected = [
     'failed runs (/jobs/history, job_status 4)', '/jobs/history/{uuid}', '/alarm/job', '/alarm/system', '/logs/job', '/logs/system',
-    '/backupmanager/report/vm', '/industry/report', '/backup_data/verify_history', '/backup_data/virus_history', '/copy/job/history',
+    '/backupmanager/report/vm', '/industry/report',
+    '/backupmanager/report/storage', '/storages', '/tapes/job', '/tapes', '/backup_data/verify_history', '/backup_data/virus_history', '/copy/job/history',
 ];
 check('audit: every endpoint has a raw sample', array_keys($s['raw']) === $expected, json_encode(array_keys($s['raw'])));
 check('audit: no errors', $s['errors'] === [], json_encode($s['errors']));

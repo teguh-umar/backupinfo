@@ -281,7 +281,17 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
 
         // Per-VM result of one run (0.3.0 run store reads it for failed runs): the first failed run.
         $failedLabel = 'failed runs (' . self::HISTORY_PATH . ', job_status 4)';
-        $firstFailed = trim((string) ($out['raw'][$failedLabel][0]['history_uuid'] ?? ''));
+        // A VM job's run first: a file-backup run answered "code -1" on the VM (2026-11-04).
+        $firstFailed = '';
+        foreach ($out['raw'][$failedLabel] ?? [] as $run) {
+            $uuid = is_array($run) ? trim((string) ($run['history_uuid'] ?? '')) : '';
+            if ($uuid !== '' && ($firstFailed === '' || (int) ($run['module_type_value'] ?? 0) === 2)) {
+                $firstFailed = $uuid;
+                if ((int) ($run['module_type_value'] ?? 0) === 2) {
+                    break;
+                }
+            }
+        }
         if ($firstFailed === '') {
             $out['errors'][] = self::HISTORY_PATH . '/{uuid}: skipped, no failed run in the sample';
         } else {
@@ -299,6 +309,11 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
         $sample('/logs/system', '/logs/system', $desc, ['create_time', 'op_time']);
         $sample('/backupmanager/report/vm', '/backupmanager/report/vm', []);
         $sample('/industry/report', '/industry/report', ['search' => $search]);
+        // Backup targets (0.3.0-rc5 probe): disk/NAS storages and tape.
+        $sample('/backupmanager/report/storage', '/backupmanager/report/storage', ['order' => 'desc'], ['storage_name', null]);
+        $sample('/storages', '/storages', []);
+        $sample('/tapes/job', '/tapes/job', []);
+        $sample('/tapes', '/tapes', []);
 
         // Verification and virus scan are per restore point: the newest one of a sampled item.
         $timepoint = '';
