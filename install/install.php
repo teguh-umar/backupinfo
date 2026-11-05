@@ -135,6 +135,23 @@ function plugin_backupinfo_install()
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
     }
 
+    // 0.3.0-rc5: off-site copy runs, job/system logs and system alarms, append-only, so the audit
+    // page keeps them after the backup system purges its own history
+    if (!$DB->tableExists('glpi_plugin_backupinfo_events')) {
+        $DB->doQuery("CREATE TABLE `glpi_plugin_backupinfo_events` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT,
+            `connections_id` int unsigned NOT NULL DEFAULT 0,
+            `kind` varchar(16) NOT NULL DEFAULT '',
+            `event_time` timestamp NULL DEFAULT NULL,
+            `fingerprint` char(40) NOT NULL DEFAULT '',
+            `data` mediumtext,
+            `date_creation` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `unicity` (`connections_id`, `kind`, `fingerprint`),
+            KEY `kind_time` (`kind`, `event_time`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    }
+
     // Restore tests: manual records and imported Vinchin verifications (source = vinchin)
     if (!$DB->tableExists('glpi_plugin_backupinfo_restoretests')) {
         $DB->doQuery("CREATE TABLE `glpi_plugin_backupinfo_restoretests` (

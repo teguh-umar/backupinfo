@@ -5,6 +5,7 @@ namespace GlpiPlugin\Backupinfo;
 use GlpiPlugin\Backupinfo\Source\AuditSource;
 use GlpiPlugin\Backupinfo\Source\Registry;
 use GlpiPlugin\Backupinfo\Sync\DbObjectStore;
+use GlpiPlugin\Backupinfo\Sync\DbEventStore;
 use GlpiPlugin\Backupinfo\Sync\DbRunStore;
 use Session;
 
@@ -56,7 +57,7 @@ final class AuditData
             'failures'   => AuditPage::failures($this->computers, $this->runs ??= $this->readRuns($ids, $from, $to)),
             'restore'    => AuditPage::restore($this->computers, self::tests($ids, substr($to, 0, 10)), RestoreInterval::overrides($ids),
                 RestoreInterval::globalMonths(), substr($from, 0, 10), substr($to, 0, 10)),
-            'copies'     => AuditPage::copies($this->computers, $this->objects(), ($this->computers === [] ? [] : $this->live('copyRuns', [$from, $to], $errors))),
+            'copies'     => AuditPage::copies($this->computers, $this->objects(), ($this->computers === [] ? [] : $this->events('copy', $from, $to))),
             'activity'   => $this->activity($from, $to, $errors),
             default      => throw new \InvalidArgumentException('unknown section'),
         };
@@ -71,14 +72,20 @@ final class AuditData
 
     private function activity(string $from, string $to, array &$errors): array
     {
-        $jobLogs = $this->live('jobLogs', [$from, $to], $errors);
+        $jobLogs = $this->events('joblog', $from, $to);
         // Logins carry source IPs and admin names: configuration right only.
         if (!Session::haveRight(RightDefinition::CONFIG, READ)) {
             $table          = AuditPage::activity($jobLogs, [], []);
             $table['note'] .= ' ' . __('System log and system alarms are shown to Backup Info configuration users only.', 'backupinfo');
             return $table;
         }
-        return AuditPage::activity($jobLogs, $this->live('systemLogs', [$from, $to], $errors), $this->live('systemAlarms', [$from, $to], $errors));
+        return AuditPage::activity($jobLogs, $this->events('syslog', $from, $to), $this->events('sysalarm', $from, $to));
+    }
+
+    /** Stored events of the active connections (the sync keeps them; see EventSync). */
+    private function events(string $kind, string $from, string $to): array
+    {
+        return (new DbEventStore())->rows($kind, $from, $to, array_keys($this->sources()));
     }
 
     /** Merged rows of one AuditSource method over every active connection (cached a short while). */

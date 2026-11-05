@@ -20,6 +20,8 @@ $tables = [
     'glpi_plugin_backupinfo_restoretests' => ['id', 'entities_id', 'is_recursive', 'computers_id', 'date', 'method', 'result',
         'rto_minutes', 'users_id', 'source', 'source_ref', 'comment', 'date_creation', 'date_mod'],
     'glpi_plugin_backupinfo_restoreintervals' => ['id', 'computers_id', 'months'],
+    // 0.3.0-rc5: copy runs, job/system logs and system alarms kept after Vinchin purges them
+    'glpi_plugin_backupinfo_events' => ['id', 'connections_id', 'kind', 'event_time', 'fingerprint', 'data', 'date_creation'],
 ];
 
 foreach ($tables as $table => $columns) {
@@ -44,6 +46,9 @@ check('runs unique (connections_id, history_uuid)',
     (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`connections_id`,\s*`history_uuid`\)/', $install));
 check('runs_items unique (runs_id, vm_name): unmatched VMs (computers_id 0) do not collide',
     (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`runs_id`,\s*`vm_name`\)/', $install));
+check('events unique (connections_id, kind, fingerprint)',
+    (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`connections_id`,\s*`kind`,\s*`fingerprint`\)/', $install));
+check('events index (kind, event_time)', (bool) preg_match('/KEY `[a-z_]+` \(`kind`,\s*`event_time`\)/', $install));
 check('restoretests unique (source, source_ref)',
     (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`source`,\s*`source_ref`\)/', $install));
 check('restoreintervals unique (computers_id)',

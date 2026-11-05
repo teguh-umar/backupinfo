@@ -18,7 +18,7 @@ include('../../../inc/includes.php');
 Session::checkRight(RightDefinition::REPORT, READ);
 
 $maxRows = 500; // per section on screen; the exports have every row
-$live    = ['coverage', 'copies', 'activity']; // read from the backup system: loaded last
+$live    = ['coverage']; // read from the backup system: loaded last
 // Excel sheet names (31 characters at most)
 $tabs    = ['policy' => '1 Policy', 'coverage' => '2 Coverage', 'population' => '3 Runs (population)', 'failures' => '4 Failures',
     'restore' => '5 Restore tests', 'copies' => '6 Off-site copies', 'activity' => '7 Changes and alarms'];

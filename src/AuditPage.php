@@ -236,7 +236,7 @@ final class AuditPage
         return [
             'columns' => ['Computer', 'VM', 'Copy job', 'Start', 'End', 'Run status', 'Item status', 'Restore points', 'Size', 'Error'],
             'rows'    => $rows,
-            'note'    => __('Backup copy and replication runs in the period for in-scope Computers (off-site copy, read live).', 'backupinfo'),
+            'note'    => __('Backup copy and replication runs in the period for in-scope Computers (off-site copy), as stored by the sync.', 'backupinfo'),
         ];
     }
 
@@ -260,7 +260,7 @@ final class AuditPage
         return [
             'columns' => ['Time', 'Kind', 'User', 'Level / type', 'Description'],
             'rows'    => $rows,
-            'note'    => __('From the backup system, read live: job changes, logins and admin actions, system alarms.', 'backupinfo'),
+            'note'    => __('From the backup system, as stored by the sync: job changes, logins and admin actions, system alarms.', 'backupinfo'),
         ];
     }
 }
