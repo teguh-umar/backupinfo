@@ -156,34 +156,42 @@ final class AuditData
         return $out;
     }
 
-    /** @return list<array<string, mixed>> runs x Computers started in [from, to], newest first */
+    /**
+     * Runs x in-scope Computers started in [from, to], newest first. The Computer is decided now
+     * (RunResolve), so a VM matched or pinned after its runs were stored still counts.
+     *
+     * @return list<array<string, mixed>>
+     */
     private function readRuns(array $ids, string $from, string $to): array
     {
         global $DB;
 
+        if ($ids === []) {
+            return [];
+        }
         $names = [];
         foreach ($DB->request(['SELECT' => ['id', 'name'], 'FROM' => 'glpi_plugin_backupinfo_connections']) as $c) {
             $names[(int) $c['id']] = (string) $c['name'];
         }
-        $out = [];
-        foreach (array_chunk($ids, 500) as $chunk) {
-            foreach ($DB->request([
-                'SELECT'     => ['r.history_uuid', 'r.connections_id', 'r.job_name', 'r.start_time', 'r.finish_time', 'r.status', 'r.size_text',
-                    'r.duration_s', 'r.reason', 'i.computers_id', 'i.vm_name', 'i.item_status'],
-                'FROM'       => DbRunStore::ITEMS . ' AS i',
-                'INNER JOIN' => [DbRunStore::RUNS . ' AS r' => ['ON' => ['i' => 'runs_id', 'r' => 'id']]],
-                'WHERE'      => [
-                    'i.computers_id' => $chunk,
-                    ['r.start_time' => ['>=', $from]],
-                    ['r.start_time' => ['<=', $to]],
-                ],
-                'ORDER'      => ['r.start_time DESC', 'i.vm_name'],
-            ]) as $row) {
-                $row['connection'] = $names[(int) $row['connections_id']] ?? '';
-                $out[] = $row;
-            }
+        $rows = [];
+        foreach ($DB->request([
+            'SELECT'    => ['r.id AS runs_id', 'r.history_uuid', 'r.connections_id', 'r.job_name', 'r.start_time', 'r.finish_time', 'r.status',
+                'r.size_text', 'r.duration_s', 'r.reason', 'i.computers_id', 'i.vm_name', 'i.item_status'],
+            'FROM'      => DbRunStore::RUNS . ' AS r',
+            'LEFT JOIN' => [DbRunStore::ITEMS . ' AS i' => ['ON' => ['i' => 'runs_id', 'r' => 'id']]],
+            'WHERE'     => [
+                ['r.start_time' => ['>=', $from]],
+                ['r.start_time' => ['<=', $to]],
+            ],
+        ]) as $row) {
+            $rows[] = $row;
         }
-        usort($out, static fn(array $a, array $b): int => strcmp((string) $b['start_time'], (string) $a['start_time']));
+        $out = RunResolve::resolve($rows, RunResolve::lookups((new DbObjectStore())->forLookups()), array_fill_keys($ids, true));
+        foreach ($out as &$row) {
+            $row['connection'] = $names[(int) $row['connections_id']] ?? '';
+        }
+        unset($row);
+        usort($out, static fn(array $a, array $b): int => [(string) $b['start_time'], (string) $a['vm_name']] <=> [(string) $a['start_time'], (string) $b['vm_name']]);
         return $out;
     }
 

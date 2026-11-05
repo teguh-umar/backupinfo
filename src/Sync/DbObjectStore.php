@@ -106,6 +106,38 @@ final class DbObjectStore implements ObjectStore
     }
 
     /**
+     * Every object of the active connections (matched or not), only what the run lookups need.
+     *
+     * @return list<array{connections_id: int, name: string, job_name: string, items_id: int}>
+     */
+    public function forLookups(): array
+    {
+        global $DB;
+
+        $active = [];
+        foreach ($DB->request(['SELECT' => ['id'], 'FROM' => 'glpi_plugin_backupinfo_connections', 'WHERE' => ['is_active' => 1]]) as $c) {
+            $active[] = (int) $c['id'];
+        }
+        if ($active === []) {
+            return [];
+        }
+        $out = [];
+        foreach ($DB->request([
+            'SELECT' => ['connections_id', 'name', 'job_name', 'itemtype', 'items_id'],
+            'FROM'   => self::TABLE,
+            'WHERE'  => ['connections_id' => $active],
+        ]) as $row) {
+            $out[] = [
+                'connections_id' => (int) $row['connections_id'],
+                'name'           => (string) $row['name'],
+                'job_name'       => (string) $row['job_name'],
+                'items_id'       => (string) $row['itemtype'] === 'Computer' ? (int) $row['items_id'] : 0,
+            ];
+        }
+        return $out;
+    }
+
+    /**
      * Objects matched to one Computer, from active connections, each with source_label
      * and the connection's last_sync (for the asset tab).
      *

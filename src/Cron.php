@@ -189,7 +189,7 @@ final class Cron extends \CommonGLPI
                 continue;
             }
             try {
-                $byConn ??= self::objectLookups();
+                $byConn ??= RunResolve::lookups((new DbObjectStore())->forLookups());
                 $names = $byConn[$r['id']]['names'] ?? [];
                 $jobs  = $byConn[$r['id']]['jobs'] ?? [];
                 $res   = (new RunSync())->run(
@@ -220,29 +220,6 @@ final class Cron extends \CommonGLPI
         } catch (\Throwable $e) {
             Toolbox::logInFile('backupinfo', 'Runs purge: ' . SyncService::errorLine($e) . "\n");
         }
-    }
-
-    /**
-     * Matched objects per connection: object name -> Computer, and job name -> its Computers.
-     *
-     * @return array<int, array{names: array<string, int>, jobs: array<string, list<array{computers_id:int, vm_name:string}>>}>
-     */
-    private static function objectLookups(): array
-    {
-        $out = [];
-        foreach ((new DbObjectStore())->matched() as $o) {
-            $conn = (int) $o['connections_id'];
-            $name = trim((string) $o['name']);
-            $id   = (int) $o['items_id'];
-            $out[$conn]['names'][mb_strtolower($name)] = $id;
-            // job_name holds ", "-joined names: split, never LIKE
-            foreach (explode(',', (string) $o['job_name']) as $job) {
-                if (trim($job) !== '') {
-                    $out[$conn]['jobs'][mb_strtolower(trim($job))][] = ['computers_id' => $id, 'vm_name' => $name];
-                }
-            }
-        }
-        return $out;
     }
 
     /**
