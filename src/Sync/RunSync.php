@@ -56,12 +56,15 @@ final class RunSync
         // fetches this page again instead of stopping on it.
         // Detail calls go to the newest failed runs; older ones beyond the cap use their job's Computers.
         $detailed = array_flip(array_slice(array_map(static fn(Run $r): string => $r->historyUuid, $failed), 0, self::MAX_ITEM_CALLS));
+        $detailRefused = false;
         foreach (array_reverse($new) as $run) {
             $items = [];
-            if (isset($detailed[$run->historyUuid])) {
+            if (isset($detailed[$run->historyUuid]) && !$detailRefused) {
                 $res = $source->runItems($run->historyUuid);
                 if ($res['error'] !== '') {
+                    // Refused once, refused for all (code -1 on the VM, 2026-11-05): stop asking this sync.
                     $out['errors'][] = $res['error'];
+                    $detailRefused   = true;
                 }
                 foreach ($res['items'] as $i) {
                     $items[] = ['computers_id' => $vmToComputer($i['vm_name']), 'vm_name' => $i['vm_name'], 'item_status' => $i['status']];

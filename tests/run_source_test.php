@@ -6,7 +6,7 @@ foreach ([
     'Text', 'Source/BackupObject', 'Source/Run', 'Source/BackupSource', 'Source/ProbeableSource',
     'Source/AuditProbeableSource', 'Source/RunHistorySource', 'Source/AuditSource', 'Source/PartialFetch',
     'Vinchin/Signer', 'Vinchin/Transport', 'Vinchin/Client', 'Vinchin/ItemMapper', 'Vinchin/JobHistoryMapper',
-    'Vinchin/ScheduleMapper', 'Vinchin/RunMapper', 'Vinchin/VinchinSource',
+    'Vinchin/ScheduleMapper', 'Vinchin/RunMapper', 'Source/Event', 'Source/Target', 'Vinchin/EventMapper', 'Vinchin/VinchinSource',
 ] as $f) {
     require BI_ROOT . "/src/$f.php";
 }

@@ -152,6 +152,14 @@ function plugin_backupinfo_install()
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
     }
 
+    // rc6: events are stored in the common Event shape. rc5 stored Vinchin rows as they came: clear
+    // them once (only test installs had them); the next sync reads them back from the backup system.
+    $fmt = Config::getConfigurationValues('plugin:backupinfo', ['events_format']);
+    if ((int) ($fmt['events_format'] ?? 0) < 2) {
+        $DB->doQuery('TRUNCATE TABLE `glpi_plugin_backupinfo_events`');
+        Config::setConfigurationValues('plugin:backupinfo', ['events_format' => 2]);
+    }
+
     // Restore tests: manual records and imported Vinchin verifications (source = vinchin)
     if (!$DB->tableExists('glpi_plugin_backupinfo_restoretests')) {
         $DB->doQuery("CREATE TABLE `glpi_plugin_backupinfo_restoretests` (

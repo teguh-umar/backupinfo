@@ -59,38 +59,39 @@ final class FakeAudit
 $now = strtotime('2026-11-05 10:00:00');
 $src = new FakeAudit();
 $src->data = [
-    'copyRuns'     => [['job_name' => 'COPY-A', 'start_time' => '2026-11-04 01:00:00', 'end_time' => '2026-11-04 02:00:00', 'item_name' => 'VM-A', 'status' => 'Success', 'item_status' => 'Success']],
-    'jobLogs'      => [['id' => 7, 'op_time' => '2026-11-04 03:00:00', 'job_name' => 'J', 'log_description' => 'x'],
-                       ['id' => 8, 'op_time' => '2026-11-04 04:00:00', 'job_name' => 'J', 'log_description' => 'y']],
-    'systemLogs'   => [['create_time' => '2026-11-04 05:00:00', 'description' => 'login']],
-    'systemAlarms' => [['alarm_id' => 3, 'alarm_time' => '2026-11-04 06:00:00', 'solved_des' => 'Pending']],
+    'copyRuns'     => [['kind' => 'copy', 'job' => 'COPY-A', 'time' => '2026-11-04 01:00:00', 'end_time' => '2026-11-04 02:00:00', 'vm' => 'VM-A', 'status' => 'Success', 'item_status' => 'Success']],
+    'jobLogs'      => [['kind' => 'joblog', 'ref' => '7', 'time' => '2026-11-04 03:00:00', 'job' => 'J', 'message' => 'x'],
+                       ['kind' => 'joblog', 'ref' => '8', 'time' => '2026-11-04 04:00:00', 'job' => 'J', 'message' => 'y']],
+    'systemLogs'   => [['kind' => 'syslog', 'ref' => '', 'time' => '2026-11-04 05:00:00', 'message' => 'login']],
+    'systemAlarms' => [['kind' => 'sysalarm', 'ref' => '3', 'time' => '2026-11-04 06:00:00', 'status' => 'Pending']],
 ];
 $store = new FakeEvents();
 $res   = EventSync::run(1, $src, $store, $now);
 check('first sync: every kind stored', $res['new'] === ['copy' => 1, 'joblog' => 2, 'syslog' => 1, 'sysalarm' => 1], json_encode($res['new']));
 check('first sync: backfill window', $src->calls[0][1] === date('Y-m-d H:i:s', $now - EventSync::FIRST_DAYS * 86400) && $src->calls[0][2] === '2026-11-05 10:00:00');
 $syslog = array_values(array_filter($store->rows, static fn(array $r): bool => $r['kind'] === 'syslog'));
-check('event time from each kind\'s own field (create_time fallback)', $syslog[0]['time'] === '2026-11-04 05:00:00');
+check('event time from the common time field', $syslog[0]['time'] === '2026-11-04 05:00:00');
 
 $src->calls = [];
-$src->data['systemAlarms'][0]['solved_des'] = 'Solved'; // same alarm, status changed later
+$src->data['systemAlarms'][0]['status'] = 'Solved'; // same alarm, status changed later
 $res = EventSync::run(1, $src, $store, $now + 3600);
 check('second sync: nothing new (identity, not the whole row, for alarms)', array_sum($res['new']) === 0, json_encode($res['new']));
 check('second sync: window from the newest stored event minus one day', $src->calls[1][1] === '2026-11-03 04:00:00', json_encode($src->calls[1]));
 check('stored rows never change', str_contains(json_encode($store->rows), 'Pending') && !str_contains(json_encode($store->rows), 'Solved'));
 
 $src->fail = ['jobLogs' => 'HTTP 403'];
-$src->data['copyRuns'][] = ['job_name' => 'COPY-A', 'start_time' => '2026-11-05 01:00:00', 'item_name' => 'VM-A', 'status' => 'Failed'];
+$src->data['copyRuns'][] = ['kind' => 'copy', 'job' => 'COPY-A', 'time' => '2026-11-05 01:00:00', 'vm' => 'VM-A', 'status' => 'Failed'];
 $res = EventSync::run(1, $src, $store, $now + 7200);
 check('a failed kind does not stop the others', $res['new']['copy'] === 1 && $res['errors'] === ['joblog: HTTP 403'], json_encode($res));
 $bad = new FakeAudit();
-$bad->data = ['jobLogs' => [['op_time' => 'n/a']]];
+$bad->data = ['jobLogs' => [['kind' => 'joblog', 'time' => 'n/a']]];
 check('row without a usable time is skipped', EventSync::run(2, $bad, new FakeEvents(), $now)['new']['joblog'] === 0);
 
 check('fingerprint stable whatever the key order', EventSync::fingerprint('joblog', ['b' => 1, 'a' => 2]) === EventSync::fingerprint('joblog', ['a' => 2, 'b' => 1]));
 check('fingerprint is 40 hex chars', (bool) preg_match('/^[0-9a-f]{40}$/', EventSync::fingerprint('copy', ['x' => 1])));
-check('copy identity: job, start, VM', EventSync::fingerprint('copy', ['job_name' => 'A', 'start_time' => 'T', 'item_name' => 'V', 'status' => 'Running'])
-    === EventSync::fingerprint('copy', ['job_name' => 'A', 'start_time' => 'T', 'item_name' => 'V', 'status' => 'Success']));
+check('copy identity: job, start, VM', EventSync::fingerprint('copy', ['job' => 'A', 'time' => 'T', 'vm' => 'V', 'status' => 'Running'])
+    === EventSync::fingerprint('copy', ['job' => 'A', 'time' => 'T', 'vm' => 'V', 'status' => 'Success']));
+check('rc5 raw events are cleared once on upgrade (refilled by the next sync)', str_contains((string) @file_get_contents(BI_ROOT . '/install/install.php'), "'events_format'"));
 
 // Wiring
 $cron = $read('src/Cron.php');
@@ -100,6 +101,6 @@ check('audit: copies and activity read from GLPI', str_contains($data, "\$this->
 check('audit: system log and alarms still behind config READ', str_contains($data, 'Session::haveRight(RightDefinition::CONFIG, READ)'));
 check('audit: no live read for copies or activity', !str_contains($data, "live('copyRuns'") && !str_contains($data, "live('jobLogs'"));
 $page = $read('front/audit.php');
-check('page: only coverage is live', str_contains($page, "\$live    = ['coverage'];"));
+check('page: only coverage and targets are live', str_contains($page, "\$live    = ['coverage', 'targets'];"));
 
 done();

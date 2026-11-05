@@ -3,8 +3,8 @@
 namespace GlpiPlugin\Backupinfo\Sync;
 
 /**
- * Copies the backup system's audit events into GLPI so they outlive its own retention: off-site
- * copy runs, job logs, system logs and system alarms. Each kind is read from one day before its
+ * Copies the backup system's audit events (common Event rows, any brand) into GLPI so they outlive
+ * its own retention: off-site copy runs, job logs, system logs and system alarms. Each kind is read from one day before its
  * newest stored event (the first time: FIRST_DAYS back, bounded by each read's row cap) and stored
  * once by fingerprint. A kind that fails is reported and the others go on. Pure (store and source
  * are passed in).
@@ -13,12 +13,12 @@ final class EventSync
 {
     public const FIRST_DAYS = 400;
 
-    /** kind => [AuditSource method, time fields in order, identity fields (all present) or [] = whole row] */
+    /** kind => [AuditSource method, time fields in order, identity fields (all present) or the whole event] */
     private const KINDS = [
-        'copy'     => ['copyRuns', ['start_time', 'end_time'], ['job_name', 'start_time', 'item_name']],
-        'joblog'   => ['jobLogs', ['op_time', 'create_time'], ['id']],
-        'syslog'   => ['systemLogs', ['op_time', 'create_time'], ['id']],
-        'sysalarm' => ['systemAlarms', ['alarm_time'], ['alarm_id']],
+        'copy'     => ['copyRuns', ['time', 'end_time'], ['job', 'time', 'vm']],
+        'joblog'   => ['jobLogs', ['time'], ['ref']],
+        'syslog'   => ['systemLogs', ['time'], ['ref']],
+        'sysalarm' => ['systemAlarms', ['time'], ['ref']],
     ];
 
     /** @return list<string> */

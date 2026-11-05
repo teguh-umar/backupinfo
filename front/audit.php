@@ -18,14 +18,17 @@ include('../../../inc/includes.php');
 Session::checkRight(RightDefinition::REPORT, READ);
 
 $maxRows = 500; // per section on screen; the exports have every row
-$live    = ['coverage']; // read from the backup system: loaded last
+$live    = ['coverage', 'targets']; // read from the backup system now: loaded last
 // Excel sheet names (31 characters at most)
 $tabs    = ['policy' => '1 Policy', 'coverage' => '2 Coverage', 'population' => '3 Runs (population)', 'failures' => '4 Failures',
-    'restore' => '5 Restore tests', 'copies' => '6 Off-site copies', 'activity' => '7 Changes and alarms'];
+    'restore' => '5 Restore tests', 'copies' => '6 Off-site copies', 'activity' => '7 Changes and alarms', 'targets' => '8 Backup targets'];
 
 $now    = time();
 $period = AuditPeriod::parse((string) ($_GET['period'] ?? ''), $now);
 $data   = new AuditData($period);
+$showOwn = (string) ($_GET['own'] ?? '') === '1';
+$data->showOwnLogins($showOwn);
+$keep    = ['period' => $period['key']] + ($showOwn ? ['own' => '1'] : []);
 $export = (string) ($_GET['export'] ?? '');
 $self   = Html::getPrefixedUrl('/plugins/backupinfo/front/audit.php');
 $titles = AuditPage::titles();
@@ -130,7 +133,7 @@ Html::header(__('Audit evidence', 'backupinfo'), '', \GlpiPlugin\Pgnsuite\Menu::
 \GlpiPlugin\Pgnsuite\Menu::renderSubNav('backupinfo', 'audit');
 
 $exportUrl = static fn(string $what, string $format = ''): string => $self . '?' . http_build_query(
-    ['period' => $period['key'], 'export' => $what] + ($format !== '' ? ['format' => $format] : [])
+    $keep + ['export' => $what] + ($format !== '' ? ['format' => $format] : [])
 );
 
 echo '<div class="container-fluid">';
@@ -141,6 +144,8 @@ foreach (AuditPeriod::choices($now) as $key => $label) {
     echo '<option value="' . htmlescape((string) $key) . '"' . ((string) $key === $period['key'] ? ' selected' : '') . '>' . htmlescape($label) . '</option>';
 }
 echo '</select></div>';
+echo '<div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="backupinfo-own" name="own" value="1"' . ($showOwn ? ' checked' : '') . '>'
+    . '<label class="form-check-label" for="backupinfo-own">' . __s('Show this server\'s logins', 'backupinfo') . '</label></div>';
 echo '<button type="submit" class="btn btn-primary">' . __s('Show', 'backupinfo') . '</button>';
 echo '<a class="btn btn-outline-success ms-auto" href="' . htmlescape($exportUrl('all')) . '"><i class="ti ti-file-spreadsheet"></i> '
     . __s('Export all sections (Excel)', 'backupinfo') . '</a>';
@@ -182,7 +187,7 @@ echo '</div></div>';
 // GLPI sections first, then the live reads; one at a time (the session serialises them anyway).
 $order = array_merge(array_values(array_diff(AuditPage::SECTIONS, $live)), $live);
 echo Html::scriptBlock('(async () => {
-    const base = ' . json_encode($self . '?' . http_build_query(['period' => $period['key']]), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';
+    const base = ' . json_encode($self . '?' . http_build_query($keep), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';
     const failed = ' . json_encode(__('This section could not be loaded. Reload the page or use the export.', 'backupinfo'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';
     for (const key of ' . json_encode($order) . ') {
         const body = document.getElementById("backupinfo-audit-body-" + key);

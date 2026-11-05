@@ -9,7 +9,7 @@ namespace GlpiPlugin\Backupinfo;
  */
 final class AuditPage
 {
-    public const SECTIONS = ['policy', 'coverage', 'population', 'failures', 'restore', 'copies', 'activity'];
+    public const SECTIONS = ['policy', 'coverage', 'population', 'failures', 'restore', 'copies', 'activity', 'targets'];
 
     /** @return array<string, string> section => title */
     public static function titles(): array
@@ -22,6 +22,7 @@ final class AuditPage
             'restore'    => __('5. Restore tests', 'backupinfo'),
             'copies'     => __('6. Off-site copies', 'backupinfo'),
             'activity'   => __('7. Changes, access and alarms', 'backupinfo'),
+            'targets'    => __('8. Backup targets', 'backupinfo'),
         ];
     }
 
@@ -226,12 +227,12 @@ final class AuditPage
         }
         $rows = [];
         foreach ($copyRows as $c) {
-            $computer = $byName[mb_strtolower(trim((string) $c['item_name']))] ?? null;
+            $computer = $byName[mb_strtolower(trim((string) ($c['vm'] ?? '')))] ?? null;
             if ($computer === null) {
                 continue;
             }
-            $rows[] = [$computer, (string) $c['item_name'], (string) $c['job_name'], (string) $c['start_time'], (string) $c['end_time'],
-                (string) $c['status'], (string) $c['item_status'], (int) $c['timepoint_count'], (string) $c['valid_size'], (string) $c['error']];
+            $rows[] = [$computer, (string) $c['vm'], (string) ($c['job'] ?? ''), (string) ($c['time'] ?? ''), (string) ($c['end_time'] ?? ''),
+                (string) ($c['status'] ?? ''), (string) ($c['item_status'] ?? ''), $c['restore_points'] ?? '', (string) ($c['size'] ?? ''), (string) ($c['error'] ?? '')];
         }
         return [
             'columns' => ['Computer', 'VM', 'Copy job', 'Start', 'End', 'Run status', 'Item status', 'Restore points', 'Size', 'Error'],
@@ -240,27 +241,54 @@ final class AuditPage
         ];
     }
 
-    /** Job log, system log and system alarms merged, newest first. */
-    public static function activity(array $jobLogs, array $systemLogs, array $systemAlarms): array
+    /**
+     * Job log, system log and system alarms (common events) merged, newest first. Logins from this
+     * GLPI server ($ownIps: the plugin's own API sessions, several per sync) are left out unless
+     * $showOwn; other actions from it stay.
+     *
+     * @param list<string> $ownIps
+     */
+    public static function activity(array $jobLogs, array $systemLogs, array $systemAlarms, array $ownIps = [], bool $showOwn = true): array
     {
-        $rows = [];
-        foreach ($jobLogs as $l) {
-            $rows[] = [(string) ($l['op_time'] ?? ''), 'Job log', (string) ($l['user_name'] ?? ''), (string) ($l['log_level_des'] ?? ''),
-                trim((string) ($l['job_name'] ?? '') . ': ' . (string) ($l['log_description'] ?? ''), ': ')];
+        $own    = array_flip(array_filter(array_map('trim', $ownIps)));
+        $hidden = 0;
+        $rows   = [];
+        foreach ($jobLogs as $e) {
+            $rows[] = [(string) $e['time'], 'Job log', (string) $e['user'], (string) $e['level'], trim((string) $e['job'] . ': ' . (string) $e['message'], ': '), ''];
         }
-        foreach ($systemLogs as $l) {
-            $rows[] = [(string) ($l['op_time'] ?? ($l['create_time'] ?? '')), 'System log', (string) ($l['user_name'] ?? ''),
-                (string) ($l['op_type_des'] ?? ($l['op_type'] ?? '')), (string) ($l['description'] ?? '')];
+        foreach ($systemLogs as $e) {
+            if (!$showOwn && isset($own[(string) $e['source_ip']]) && stripos((string) $e['action'] . ' ' . (string) $e['message'], 'login') !== false) {
+                $hidden++;
+                continue;
+            }
+            $rows[] = [(string) $e['time'], 'System log', (string) $e['user'], (string) $e['action'], (string) $e['message'], (string) $e['source_ip']];
         }
-        foreach ($systemAlarms as $a) {
-            $rows[] = [(string) ($a['alarm_time'] ?? ''), 'System alarm', '',
-                trim((string) ($a['level_des'] ?? '') . ' / ' . (string) ($a['solved_des'] ?? ''), ' /'), (string) ($a['description'] ?? '')];
+        foreach ($systemAlarms as $e) {
+            $rows[] = [(string) $e['time'], 'System alarm', '', trim((string) $e['level'] . ' / ' . (string) $e['status'], ' /'), (string) $e['message'], ''];
         }
         usort($rows, static fn(array $a, array $b): int => strcmp($b[0], $a[0]));
+        $note = __('From the backup system, as stored by the sync: job changes, logins and admin actions, system alarms.', 'backupinfo');
+        if ($hidden > 0) {
+            $note .= ' ' . sprintf(__('%d logins from this GLPI server (the plugin\'s own API sessions) are hidden; tick "Show this server\'s logins" to list them.', 'backupinfo'), $hidden);
+        }
         return [
-            'columns' => ['Time', 'Kind', 'User', 'Level / type', 'Description'],
+            'columns' => ['Time', 'Kind', 'User', 'Level / type', 'Description', 'Source IP'],
             'rows'    => $rows,
-            'note'    => __('From the backup system, as stored by the sync: job changes, logins and admin actions, system alarms.', 'backupinfo'),
+            'note'    => $note,
+        ];
+    }
+
+    /** @param list<array<string, string>> $targets Target::make() rows of every connection */
+    public static function targets(array $targets, array $connections): array
+    {
+        $rows = [];
+        foreach ($targets as $t) {
+            $rows[] = [$t['kind'], $t['name'], $t['type'], $t['node'], $t['total'], $t['used'], $t['free'], $t['online'], $t['jobs'], $t['detail']];
+        }
+        return [
+            'columns' => ['Kind', 'Name', 'Type', 'Node', 'Total', 'Used', 'Free', 'Online', 'Jobs writing to it', 'Detail'],
+            'rows'    => $rows,
+            'note'    => sprintf(__('Where backups are written (disk, NAS, tape), as of now, read live from: %s.', 'backupinfo'), implode(', ', $connections)),
         ];
     }
 }

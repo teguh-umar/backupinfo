@@ -4,6 +4,8 @@ namespace GlpiPlugin\Backupinfo\Vinchin;
 
 use GlpiPlugin\Backupinfo\Source\AuditProbeableSource;
 use GlpiPlugin\Backupinfo\Source\AuditSource;
+use GlpiPlugin\Backupinfo\Source\Event;
+use GlpiPlugin\Backupinfo\Source\Target;
 use GlpiPlugin\Backupinfo\Source\BackupObject;
 use GlpiPlugin\Backupinfo\Source\BackupSource;
 use GlpiPlugin\Backupinfo\Source\PartialFetch;
@@ -565,18 +567,18 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
                     if (!is_array($item)) {
                         continue;
                     }
-                    $out[] = [
-                        'job_name'        => trim((string) ($job['job_name'] ?? '')),
-                        'start_time'      => RunMapper::time($run['start_time'] ?? null) ?? '',
-                        'end_time'        => RunMapper::time($run['end_time'] ?? null) ?? '',
-                        'status'          => trim((string) ($run['status'] ?? '')),
+                    $out[] = Event::make('copy', [
+                        'job'            => $job['job_name'] ?? '',
+                        'time'           => RunMapper::time($run['start_time'] ?? null) ?? '',
+                        'end_time'       => RunMapper::time($run['end_time'] ?? null) ?? '',
+                        'status'         => $run['status'] ?? '',
                         // "VM-A(Some Platform)": the platform suffix is not part of the VM name
-                        'item_name'       => trim((string) preg_replace('/\s*\([^()]*\)\s*$/', '', (string) ($item['item_name'] ?? ''))),
-                        'item_status'     => trim((string) ($item['item_status'] ?? '')),
-                        'timepoint_count' => (int) ($item['timepoint_count'] ?? 0),
-                        'valid_size'      => trim((string) ($item['valid_size'] ?? '')),
-                        'error'           => trim((string) ($item['error_code'] ?? '')),
-                    ];
+                        'vm'             => preg_replace('/\s*\([^()]*\)\s*$/', '', (string) ($item['item_name'] ?? '')),
+                        'item_status'    => $item['item_status'] ?? '',
+                        'restore_points' => (int) ($item['timepoint_count'] ?? 0),
+                        'size'           => $item['valid_size'] ?? '',
+                        'error'          => $item['error_code'] ?? '',
+                    ]);
                 }
             }
         }
@@ -585,18 +587,86 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
 
     public function jobLogs(string $from, string $to): array
     {
-        return $this->periodList('/logs/job', ['search' => ''], 'op_time', $from, $to, ['op_time'], 2000, 'log_description');
+        return self::events('joblog', $this->periodList('/logs/job', ['search' => ''], 'op_time', $from, $to, ['op_time'], 2000, 'log_description'));
     }
 
     /** No keyword: with a VM name the endpoint returned nothing (VM, 2026-11-03). */
     public function systemLogs(string $from, string $to): array
     {
-        return $this->periodList('/logs/system', [], 'op_time', $from, $to, ['create_time', 'op_time'], 2000, 'description');
+        return self::events('syslog', $this->periodList('/logs/system', [], 'op_time', $from, $to, ['create_time', 'op_time'], 2000, 'description'));
     }
 
     public function systemAlarms(string $from, string $to): array
     {
-        return $this->periodList('/alarm/system', [], 'alarm_time', $from, $to, ['alarm_time'], 2000, 'description');
+        return self::events('sysalarm', $this->periodList('/alarm/system', [], 'alarm_time', $from, $to, ['alarm_time'], 2000, 'description'));
+    }
+
+    /** @param array{rows: list<array<string, mixed>>, error: string} $res */
+    private static function events(string $kind, array $res): array
+    {
+        return ['rows' => array_map(static fn(array $row): array => EventMapper::map($kind, $row), $res['rows']), 'error' => $res['error']];
+    }
+
+    /**
+     * Disk, NAS and tape storages (report/storage: storage_type 10 is a tape group, 6 NFS, seen on
+     * the VM 2026-11-05), each tape group with the copy jobs writing to it, then the tape libraries.
+     */
+    public function targets(): array
+    {
+        if (($error = $this->ensureLogin()) !== '') {
+            return ['rows' => [], 'error' => $error];
+        }
+        try {
+            $storages = $this->client->getPaged('/backupmanager/report/storage', ['sort' => 'storage_name', 'order' => 'desc'], 100, 1000);
+        } catch (\RuntimeException $e) {
+            return ['rows' => [], 'error' => $e->getMessage()];
+        }
+        // Tape jobs and libraries are optional: a key without the tape module still lists storages.
+        $jobsByGroup = [];
+        $libraries   = [];
+        try {
+            foreach ($this->client->getPaged('/tapes/job', [], 100, 1000) as $job) {
+                if (is_array($job) && trim((string) ($job['group_name'] ?? '')) !== '') {
+                    $jobsByGroup[mb_strtolower(trim((string) $job['group_name']))][] = trim((string) ($job['job_name'] ?? ''));
+                }
+            }
+            $libraries = $this->client->getPaged('/tapes', [], 100, 200);
+        } catch (\RuntimeException $e) {
+            // listed without tape detail
+        }
+
+        $out = [];
+        foreach ($storages as $st) {
+            if (!is_array($st)) {
+                continue;
+            }
+            $name = trim((string) ($st['storage_nickname'] ?? ($st['storage_name'] ?? '')));
+            $type = (int) ($st['storage_type'] ?? 0);
+            $kind = match ($type) { 10 => 'tape', 6 => 'nas', default => 'disk' };
+            $out[] = Target::make([
+                'kind'   => $kind,
+                'name'   => $name,
+                'type'   => match ($type) { 10 => 'Tape group', 6 => 'NFS share', default => 'Storage type ' . $type },
+                'node'   => $st['node_name'] ?? '',
+                'total'  => $st['total'] ?? '',
+                'used'   => $st['used'] ?? '',
+                'free'   => $st['rest'] ?? '',
+                'online' => isset($st['storage_status']) ? ((int) $st['storage_status'] === 1 ? 'yes' : 'no') : '',
+                'jobs'   => implode(', ', array_unique($jobsByGroup[mb_strtolower($name)] ?? [])),
+            ]);
+        }
+        foreach ($libraries as $lib) {
+            if (!is_array($lib)) {
+                continue;
+            }
+            $out[] = Target::make([
+                'kind'   => 'tape library',
+                'name'   => $lib['name'] ?? ($lib['lib_name'] ?? ''),
+                'type'   => trim((string) ($lib['vendor'] ?? '') . ' ' . (string) ($lib['lib_name'] ?? '')),
+                'detail' => isset($lib['slot_num']) ? ((int) $lib['slot_num'] . ' slots') : '',
+            ]);
+        }
+        return ['rows' => $out, 'error' => ''];
     }
 
     /**

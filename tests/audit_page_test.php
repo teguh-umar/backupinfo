@@ -2,7 +2,7 @@
 
 require __DIR__ . '/bootstrap.php';
 
-foreach (['Rpo', 'Status', 'RestoreInterval', 'AuditPeriod', 'AuditPage', 'Csv'] as $f) {
+foreach (['Rpo', 'Status', 'RestoreInterval', 'AuditPeriod', 'AuditPage', 'Csv', 'Source/Event', 'Source/Target'] as $f) {
     require BI_ROOT . "/src/$f.php";
 }
 
@@ -10,6 +10,8 @@ use GlpiPlugin\Backupinfo\AuditPage;
 use GlpiPlugin\Backupinfo\AuditPeriod;
 use GlpiPlugin\Backupinfo\Csv;
 use GlpiPlugin\Backupinfo\Rpo;
+use GlpiPlugin\Backupinfo\Source\Event;
+use GlpiPlugin\Backupinfo\Source\Target;
 
 $read = static fn (string $rel): string => (string) @file_get_contents(BI_ROOT . '/' . $rel);
 $now  = strtotime('2026-11-04 10:00:00');
@@ -73,18 +75,34 @@ check('restore: override 0 -> exempt', $byName['SRV-C'][1] === 0 && $byName['SRV
 check('restore: tests after the period are ignored', AuditPage::restore([11 => 'SRV-A'], $tests, [], 12, '2026-09-01', '2026-09-30')['rows'][0][4] === 'none');
 
 $copies = [
-    ['job_name' => 'COPY-1', 'start_time' => '2026-10-02 14:54:35', 'end_time' => '2026-10-02 16:07:27', 'status' => 'success', 'item_name' => 'vm-a', 'item_status' => 'success', 'timepoint_count' => 72, 'valid_size' => '1GB', 'error' => ''],
-    ['job_name' => 'COPY-1', 'start_time' => '2026-10-02 14:54:35', 'end_time' => '', 'status' => 'success', 'item_name' => 'VM-OTHER', 'item_status' => 'success', 'timepoint_count' => 1, 'valid_size' => '', 'error' => ''],
+    Event::make('copy', ['job' => 'COPY-1', 'time' => '2026-10-02 14:54:35', 'end_time' => '2026-10-02 16:07:27', 'status' => 'success', 'vm' => 'vm-a', 'item_status' => 'success', 'restore_points' => 72, 'size' => '1GB']),
+    Event::make('copy', ['job' => 'COPY-1', 'time' => '2026-10-02 14:54:35', 'status' => 'success', 'vm' => 'VM-OTHER', 'item_status' => 'success', 'restore_points' => 1]),
 ];
 $s = AuditPage::copies($computers, $objects, $copies);
-check('copies: only in-scope VMs, matched by object name', count($s['rows']) === 1 && $s['rows'][0][0] === 'SRV-A');
+check('copies: only in-scope VMs, matched by object name', count($s['rows']) === 1 && $s['rows'][0][0] === 'SRV-A' && $s['rows'][0][7] === 72);
 
-$s = AuditPage::activity(
-    [['op_time' => '2026-10-20 04:07:37', 'user_name' => 'u1', 'log_level_des' => 'Success', 'job_name' => 'JOB-1', 'log_description' => 'scheduled']],
-    [['op_time' => '2026-10-21 17:30:55', 'user_name' => 'u2', 'op_type_des' => 'System Login', 'description' => 'login']],
-    [['alarm_time' => '2026-10-19 15:52:42', 'level_des' => 'Failed', 'solved_des' => 'Pending', 'description' => 'disk']]
-);
-check('activity: merged newest first with kinds', array_column($s['rows'], 1) === ['System log', 'Job log', 'System alarm']);
+$job    = [Event::make('joblog', ['time' => '2026-10-20 04:07:37', 'user' => 'u1', 'level' => 'Success', 'job' => 'JOB-1', 'message' => 'scheduled'])];
+$sys    = [
+    Event::make('syslog', ['time' => '2026-10-21 17:30:55', 'user' => 'u2', 'action' => 'System Login', 'message' => "login from IP: '10.0.0.9'", 'source_ip' => '10.0.0.9']),
+    Event::make('syslog', ['time' => '2026-10-21 17:31:00', 'user' => 'admin', 'action' => 'System Login', 'message' => "login from IP: '10.0.0.5'", 'source_ip' => '10.0.0.5']),
+    Event::make('syslog', ['time' => '2026-10-21 17:32:00', 'user' => 'admin', 'action' => 'Modify job', 'message' => 'from 10.0.0.5', 'source_ip' => '10.0.0.5']),
+];
+$alarms = [Event::make('sysalarm', ['time' => '2026-10-19 15:52:42', 'level' => 'Failed', 'status' => 'Pending', 'message' => 'disk'])];
+$s = AuditPage::activity($job, $sys, $alarms, ['10.0.0.5'], false);
+check('activity: merged newest first with kinds', array_column($s['rows'], 1) === ['System log', 'System log', 'Job log', 'System alarm'], json_encode(array_column($s['rows'], 1)));
+check('activity: logins from this GLPI server hidden, other actions from it kept', !in_array('2026-10-21 17:31:00', array_column($s['rows'], 0), true)
+    && in_array('2026-10-21 17:32:00', array_column($s['rows'], 0), true));
+check('activity: says how many were hidden', str_contains($s['note'], '1 login'));
+check('activity: show all keeps them', count(AuditPage::activity($job, $sys, $alarms, ['10.0.0.5'], true)['rows']) === 5);
+check('activity: no own IP known -> nothing hidden', count(AuditPage::activity($job, $sys, $alarms, [], false)['rows']) === 5);
+check('activity: source IP column', in_array('10.0.0.9', array_column($s['rows'], 5), true));
+
+$s = AuditPage::targets([
+    Target::make(['kind' => 'tape', 'name' => 'Tape_Group_2', 'type' => 'Tape group', 'node' => 'NODE-1', 'total' => '21.83TB', 'used' => '11.52TB', 'free' => '10.31TB', 'online' => 'yes', 'jobs' => 'WEEKLY COPY-A']),
+    Target::make(['kind' => 'tape library', 'name' => 'LIB-1', 'type' => 'QUANTUM Scalar', 'detail' => '20 slots']),
+], ['Vinchin A']);
+check('targets: one row per target, every column', count($s['rows']) === 2 && $s['rows'][0][0] === 'tape' && $s['rows'][0][8] === 'WEEKLY COPY-A' && $s['columns'][0] === 'Kind');
+check('targets: in the sections list, live', in_array('targets', AuditPage::SECTIONS, true) && isset(AuditPage::titles()['targets']));
 
 // --- CSV
 $csv = Csv::render(['Period' => '2026-10', 'Generated by' => 'u1'], ['columns' => ['A', 'B'], 'rows' => [

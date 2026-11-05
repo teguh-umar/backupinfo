@@ -21,6 +21,8 @@ final class AuditData
     /** @var array<int, string> */
     public readonly array $computers;
 
+    private bool $showOwn = false;
+
     /** Mandatory Computers before the entity filter (to say why the page is empty). */
     public readonly int $mandatoryTotal;
 
@@ -59,6 +61,7 @@ final class AuditData
                 RestoreInterval::globalMonths(), substr($from, 0, 10), substr($to, 0, 10)),
             'copies'     => AuditPage::copies($this->computers, $this->objects(), ($this->computers === [] ? [] : $this->events('copy', $from, $to))),
             'activity'   => $this->activity($from, $to, $errors),
+            'targets'    => AuditPage::targets($this->live('targets', [], $errors), $this->connectionNames()),
             default      => throw new \InvalidArgumentException('unknown section'),
         };
         return $table + ['errors' => $errors];
@@ -75,11 +78,33 @@ final class AuditData
         $jobLogs = $this->events('joblog', $from, $to);
         // Logins carry source IPs and admin names: configuration right only.
         if (!Session::haveRight(RightDefinition::CONFIG, READ)) {
-            $table          = AuditPage::activity($jobLogs, [], []);
+            $table          = AuditPage::activity($jobLogs, [], [], [], true);
             $table['note'] .= ' ' . __('System log and system alarms are shown to Backup Info configuration users only.', 'backupinfo');
             return $table;
         }
-        return AuditPage::activity($jobLogs, $this->events('syslog', $from, $to), $this->events('sysalarm', $from, $to));
+        return AuditPage::activity($jobLogs, $this->events('syslog', $from, $to), $this->events('sysalarm', $from, $to), self::ownIps(), $this->showOwn);
+    }
+
+    /** Lists the logins of this GLPI server too (the page's "Show this server's logins"). */
+    public function showOwnLogins(bool $show): void
+    {
+        $this->showOwn = $show;
+    }
+
+    /**
+     * Addresses of this GLPI server, whose logins to the backup system are the plugin's own: the
+     * Setup list, else the address the web server answers on.
+     *
+     * @return list<string>
+     */
+    public static function ownIps(): array
+    {
+        $cfg = \Config::getConfigurationValues(SuiteConfig::CONTEXT, ['own_ips']);
+        $ips = preg_split('/[\s,;]+/', trim((string) ($cfg['own_ips'] ?? '')), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if ($ips === [] && !empty($_SERVER['SERVER_ADDR'])) {
+            $ips = [(string) $_SERVER['SERVER_ADDR']];
+        }
+        return array_values(array_filter($ips, static fn(string $ip): bool => filter_var($ip, FILTER_VALIDATE_IP) !== false));
     }
 
     /** Stored events of the active connections (the sync keeps them; see EventSync). */

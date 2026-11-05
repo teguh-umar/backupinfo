@@ -139,6 +139,15 @@ $store = new MemRunStore();
 check('runItems error: falls back to the job Computers, status failed', array_column($store->rows['1|f3']['items'], 'computers_id') === [11, 12]
     && array_unique(array_column($store->rows['1|f3']['items'], 'item_status')) === ['failed']);
 
+// --- refused once: no more detail calls this sync, every failed run still stored with its job's Computers
+$src = new FakeRuns();
+$src->runs = [run('r3', Run::FAILED), run('r2', Run::FAILED), run('r1', Run::FAILED)];
+$src->itemErrors = ['r1' => 'code -1 failed', 'r2' => 'code -1 failed', 'r3' => 'code -1 failed'];
+$store = new MemRunStore();
+$out = (new RunSync())->run(1, $src, $store, $vmToComputer, $jobComputers, 20);
+check('detail refused: asked once, then not again this sync', count(array_filter($src->calls, static fn ($c) => $c[0] === 'items')) === 1 && count($out['errors']) === 1);
+check('detail refused: all three runs stored with the job Computers', count($store->rows) === 3 && array_column($store->rows['1|r3']['items'], 'computers_id') === [11, 12]);
+
 // --- duplicate VM names in one run are stored once
 $src = new FakeRuns();
 $src->runs = [run('d1', Run::FAILED)];

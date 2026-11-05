@@ -84,6 +84,15 @@ class SuiteConfig
                 }
             }
         }
+        if (array_key_exists('own_ips', $post)) {
+            $ips = preg_split('/[\s,;]+/', trim((string) $post['own_ips']), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $bad = array_filter($ips, static fn(string $ip): bool => filter_var($ip, FILTER_VALIDATE_IP) === false);
+            if ($bad === []) {
+                $values['own_ips'] = implode(', ', $ips);
+            } else {
+                $errors[] = __('The GLPI server addresses must be IP addresses, separated by commas; they were not changed.', 'backupinfo');
+            }
+        }
         if (array_key_exists('policy_mode', $post)) {
             $values['policy_mode'] = (string) $post['policy_mode'] === Policy::MODE_MANUAL ? Policy::MODE_MANUAL : Policy::MODE_FIELD;
         }
@@ -134,7 +143,7 @@ class SuiteConfig
     {
         $canedit = Session::haveRight(RightDefinition::CONFIG, UPDATE);
         $action  = Html::getPrefixedUrl('/plugins/backupinfo/front/config.php');
-        $cfg     = Config::getConfigurationValues(self::CONTEXT, array_merge(['rpo_hours', 'rpo_grace_hours', 'policy_mode', 'restore_interval_months', 'run_keep_months'], self::FIELD_KEYS));
+        $cfg     = Config::getConfigurationValues(self::CONTEXT, array_merge(['rpo_hours', 'rpo_grace_hours', 'policy_mode', 'restore_interval_months', 'run_keep_months', 'own_ips'], self::FIELD_KEYS));
         $bridge  = FieldsBridge::fromConfig();
 
         self::connections();
@@ -168,6 +177,9 @@ class SuiteConfig
         echo '<div class="mb-3"><label class="form-label" for="backupinfo-keep">' . __s('Keep backup run history (months, 0 = forever)', 'backupinfo') . '</label>';
         echo '<input type="number" min="0" max="' . RestoreInterval::MAX_MONTHS . '" step="1" class="form-control" id="backupinfo-keep" name="run_keep_months" value="'
             . (int) ($cfg['run_keep_months'] ?? 36) . '"' . ($canedit ? '' : ' disabled') . '></div>';
+        echo '<div class="mb-3"><label class="form-label" for="backupinfo-ownips">' . __s('IP addresses of this GLPI server (its logins to the backup system are the plugin\'s own and hidden on the audit page; blank = the address the web server answers on)', 'backupinfo') . '</label>';
+        echo '<input type="text" maxlength="255" class="form-control" id="backupinfo-ownips" name="own_ips" value="'
+            . htmlescape((string) ($cfg['own_ips'] ?? '')) . '"' . ($canedit ? '' : ' disabled') . '></div>';
 
         $mode = (string) ($cfg['policy_mode'] ?? Policy::MODE_FIELD) === Policy::MODE_MANUAL ? Policy::MODE_MANUAL : Policy::MODE_FIELD;
         echo '<div class="mb-3"><label class="form-label">' . __s('Which computers must be backed up', 'backupinfo') . '</label>';
