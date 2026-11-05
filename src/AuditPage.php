@@ -130,8 +130,6 @@ final class AuditPage
                 (string) ($r['size_text'] ?? ''),
                 (string) $r['history_uuid'],
                 (string) ($r['connection'] ?? ''),
-                ($t = $tickets[(int) ($r['runs_id'] ?? 0) . '|' . (int) $r['computers_id']] ?? null) !== null && $t['tickets_id'] > 0 ? '#' . $t['tickets_id'] : '',
-                $t !== null && $t['problems_id'] > 0 ? '#' . $t['problems_id'] : '',
             ];
         }
         return [
@@ -158,6 +156,8 @@ final class AuditPage
                 (string) ($r['reason'] ?? ''),
                 (string) $r['history_uuid'],
                 (string) ($r['connection'] ?? ''),
+                isset($tickets[$k = (int) ($r['runs_id'] ?? 0) . '|' . (int) $r['computers_id']]) && $tickets[$k]['tickets_id'] > 0 ? '#' . $tickets[$k]['tickets_id'] : '',
+                isset($tickets[$k]) && $tickets[$k]['problems_id'] > 0 ? '#' . $tickets[$k]['problems_id'] : '',
             ];
         }
         return [
