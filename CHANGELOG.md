@@ -1,5 +1,31 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.3.0-rc6 — 2026-11-05 (release candidate)
+
+Groundwork for many backup brands. The plan covers Vinchin, NetBackup, Backup Exec, Veeam, Acronis,
+Commvault, Rubrik, HCI backup (Sangfor, VMware, H3C, Proxmox) and RBA-GX.
+
+- **One event shape for every brand.** Copy runs, job logs, system logs and system alarms are stored
+  as common events. The fields are: time, end time, ref, user, level, action, message, job, VM,
+  status, item status, error, source IP, restore points and size.
+  - Each source converts its own rows. Vinchin is the first.
+  - The rc5 events, stored in Vinchin's own shape, are cleared once on upgrade. The next sync reads
+    them back.
+- **8. Backup targets** (new tab, read live) lists the disk, NAS and tape storages with node,
+  capacity and online status, then the tape libraries.
+  - Each tape group lists the copy jobs that write to it.
+  - On Vinchin, storage type 10 is a tape group and 6 is an NFS share.
+- **Tab 7 hides this GLPI server's own logins.** These are the plugin's API sessions, several per
+  sync.
+  - The page says how many it hid. Tick **Show this server's logins** to list them; exports follow
+    the same choice.
+  - Other actions from that address stay listed.
+  - The server's addresses are set in Setup › Backup Info. Blank = the address the web server
+    answers on.
+  - A new Source IP column is added.
+- **Per-run detail reads stop after the first refusal in a sync.** On the VM, Vinchin answers
+  `/jobs/history/{uuid}` with "code -1". The failed runs still take their job's Computers.
+
 ## 0.3.0-rc5 — 2026-11-05 (release candidate)
 
 - **Runs are linked to Computers when read, not when stored.** A VM matched or pinned later (Backup
