@@ -152,6 +152,22 @@ function plugin_backupinfo_install()
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
     }
 
+    // 0.4.0: the Incident opened for a failed run x Computer (once, ever) and its Problem
+    if (!$DB->tableExists('glpi_plugin_backupinfo_tickets')) {
+        $DB->doQuery("CREATE TABLE `glpi_plugin_backupinfo_tickets` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT,
+            `runs_id` int unsigned NOT NULL DEFAULT 0,
+            `computers_id` int unsigned NOT NULL DEFAULT 0,
+            `tickets_id` int unsigned NOT NULL DEFAULT 0,
+            `problems_id` int unsigned NOT NULL DEFAULT 0,
+            `date_creation` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `unicity` (`runs_id`, `computers_id`),
+            KEY `computers_id` (`computers_id`),
+            KEY `tickets_id` (`tickets_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    }
+
     // 0.3.0-rc7: daily state of what the backup system only shows "as of now" (targets, platform VMs)
     if (!$DB->tableExists('glpi_plugin_backupinfo_snapshots')) {
         $DB->doQuery("CREATE TABLE `glpi_plugin_backupinfo_snapshots` (
@@ -249,12 +265,19 @@ function plugin_backupinfo_install()
         'run_pages_max'          => 20,
         'run_keep_months'        => 36,
         'restore_interval_months' => 12,
+        'tickets_enabled'        => 0,
+        'tickets_since'          => '',
+        'problem_count'          => 3,
+        'problem_days'           => 30,
+        'findings_enabled'       => 0,
     ];
     $current = Config::getConfigurationValues($ctx, array_keys($defaults));
     $missing = array_diff_key($defaults, $current);
     if ($missing !== []) {
         Config::setConfigurationValues($ctx, $missing);
     }
+    // 0.4.0: the ticket templates the admin fills in (requester, groups, supplier, category)
+    \GlpiPlugin\Backupinfo\Tickets\TicketService::ensureTemplates();
 
     // Cron (class resolved by name, it need not exist at install time)
     CronTask::register(Cron::class, 'Sync', HOUR_TIMESTAMP, [

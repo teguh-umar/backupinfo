@@ -51,10 +51,28 @@ if (isset($_POST['sync_now'])) {
     Html::redirect(ConfigTab::getReturnUrl('backupinfo'));
 }
 
+if (isset($_POST['dryrun_tickets'])) {
+    Session::checkRight(RightDefinition::CONFIG, UPDATE);
+    $res = \GlpiPlugin\Backupinfo\Tickets\TicketService::run(true, time());
+    foreach ($res['warnings'] as $w) {
+        Session::addMessageAfterRedirect(htmlescape($w), false, WARNING);
+    }
+    $lines = array_merge($res['incidents'], $res['problems']);
+    Session::addMessageAfterRedirect(htmlescape(sprintf(
+        __('Dry run, nothing written: %1$d incident(s), %2$d problem(s), %3$d link(s) to open problems.', 'backupinfo'),
+        count($res['incidents']),
+        count($res['problems']),
+        $res['links']
+    )) . ($lines === [] ? '' : '<br>' . implode('<br>', array_map('htmlescape', array_slice($lines, 0, 20)))));
+    Html::redirect(ConfigTab::getReturnUrl('backupinfo'));
+}
+
 if (isset($_POST['update'])) {
     Session::checkRight(RightDefinition::CONFIG, UPDATE);
 
     $result = SuiteConfig::sanitize($_POST);
+    $before = Config::getConfigurationValues(SuiteConfig::CONTEXT, ['tickets_enabled']);
+    $result['values'] = SuiteConfig::withTicketsSince($result['values'], !empty($before['tickets_enabled']), time());
     if ($result['values'] !== []) {
         Config::setConfigurationValues(SuiteConfig::CONTEXT, $result['values']);
     }

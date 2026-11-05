@@ -3,9 +3,11 @@
 require __DIR__ . '/bootstrap.php';
 require BI_ROOT . '/src/Tickets/IncidentPlan.php';
 require BI_ROOT . '/src/Tickets/ProblemPlan.php';
+require BI_ROOT . '/src/Tickets/TicketInput.php';
 
 use GlpiPlugin\Backupinfo\Tickets\IncidentPlan;
 use GlpiPlugin\Backupinfo\Tickets\ProblemPlan;
+use GlpiPlugin\Backupinfo\Tickets\TicketInput;
 
 $row = static fn (int $run, int $c, string $item = 'failed', string $start = '2026-11-10 01:00:00', string $reason = 'Disk full'): array => [
     'runs_id' => $run, 'computers_id' => $c, 'vm_name' => 'VM-' . $c, 'item_status' => $item, 'status' => 'failed',
@@ -39,5 +41,24 @@ check('open problem: new incidents linked to it, no new problem', $r['open'] ===
 $r = ProblemPlan::plan([11 => [$f(101, '2026-11-01 01:00:00', 400), $f(102, '2026-11-02 01:00:00', 400), $f(103, '2026-11-03 01:00:00', 400), $f(104, '2026-11-19 01:00:00')]], [], 3, 30, $now);
 check('after a solved problem: its incidents do not count for a new streak', $r['open'] === []);
 check('threshold from Setup', ProblemPlan::plan([12 => [$f(201, '2026-11-18 01:00:00'), $f(202, '2026-11-19 01:00:00')]], [], 2, 30, $now)['open'] === [12 => [201, 202]]);
+
+// --- template merge: GLPI 11 does not apply predefined fields on a code add
+$pre = ['_users_id_requester' => '7', '_groups_id_assign' => ['3', '4'], '_suppliers_id_assign' => ['2'], 'itilcategories_id' => '9', 'urgency' => '4', 'name' => 'T', 'items_id' => ['Computer' => [1 => 1]], 'status' => '5'];
+$in  = TicketInput::build($pre, ['name' => 'Backup failed: SRV-A', 'type' => 1, 'entities_id' => 3, 'items_id' => ['Computer' => [11]]]);
+check('template: actors, category and urgency copied', $in['_groups_id_assign'] === ['3', '4'] && $in['_suppliers_id_assign'] === ['2'] && $in['_users_id_requester'] === '7' && $in['itilcategories_id'] === '9' && $in['urgency'] === '4');
+check('template: own name, entity and Computer win; template status and items never copied', $in['name'] === 'Backup failed: SRV-A' && $in['entities_id'] === 3 && $in['items_id'] === ['Computer' => [11]] && !isset($in['status']));
+check('template warnings: nobody assigned, no requester', count(TicketInput::warnings([], 'X')) === 2 && TicketInput::warnings($pre, 'X') === []);
+check('template warnings: none selected', count(TicketInput::warnings([], '')) === 1);
+
+// --- wiring
+$read = static fn (string $rel): string => (string) @file_get_contents(BI_ROOT . '/' . $rel);
+$svc  = $read('src/Tickets/TicketService.php');
+check('service: off until enabled, dry run writes nothing', str_contains($svc, "if (!\$dry && empty(\$cfg['tickets_enabled']))") && substr_count($svc, 'if ($dry) {') === 2);
+check('service: never updates or closes a ticket (adds and links only)', !preg_match('/(new Ticket\(\)|\$ticket)->update\(|->delete\(/', $svc) && !str_contains($svc, "'status' =>"));
+check('service: link row written only after the add succeeded', strpos($svc, "if (!\$id) {") < strpos($svc, '$DB->insert(self::TABLE'));
+check('service: templates created once, root entity, recursive', str_contains($svc, "'entities_id' => 0, 'is_recursive' => 1") && str_contains($read('install/install.php'), 'TicketService::ensureTemplates()'));
+check('cron: tickets after the stores, never failing the sync', str_contains($read('src/Cron.php'), 'self::raiseTickets($now, $log);') && str_contains($read('src/Cron.php'), 'TicketService::run(false, $now)'));
+$conf = $read('front/config.php');
+check('setup: enabling stores the start time; dry run behind config UPDATE', str_contains($conf, 'SuiteConfig::withTicketsSince(') && str_contains($conf, 'TicketService::run(true, time())'));
 
 done();

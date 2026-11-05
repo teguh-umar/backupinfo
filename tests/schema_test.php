@@ -23,6 +23,7 @@ $tables = [
     // 0.3.0-rc5: copy runs, job/system logs and system alarms kept after Vinchin purges them
     'glpi_plugin_backupinfo_events' => ['id', 'connections_id', 'kind', 'event_time', 'fingerprint', 'data', 'date_creation'],
     'glpi_plugin_backupinfo_snapshots' => ['id', 'connections_id', 'kind', 'snap_date', 'taken_at', 'data'],
+    'glpi_plugin_backupinfo_tickets' => ['id', 'runs_id', 'computers_id', 'tickets_id', 'problems_id', 'date_creation'],
 ];
 
 foreach ($tables as $table => $columns) {

@@ -93,6 +93,29 @@ class SuiteConfig
                 $errors[] = __('The GLPI server addresses must be IP addresses, separated by commas; they were not changed.', 'backupinfo');
             }
         }
+        foreach (['tickets_enabled', 'findings_enabled'] as $key) {
+            if (array_key_exists($key, $post)) {
+                $values[$key] = (int) (bool) $post[$key];
+            }
+        }
+        foreach (['ticket_template', 'problem_template'] as $key) {
+            if (array_key_exists($key, $post)) {
+                $values[$key] = max(0, (int) $post[$key]);
+            }
+        }
+        foreach ([
+            'problem_count' => [1, 50, __('Failures before a Problem must be a whole number from %1$d to %2$d; it was not changed.', 'backupinfo')],
+            'problem_days'  => [1, 365, __('The Problem window must be a whole number of days from %1$d to %2$d; it was not changed.', 'backupinfo')],
+        ] as $key => [$min, $max, $message]) {
+            if (array_key_exists($key, $post)) {
+                $raw = trim((string) $post[$key]);
+                if (preg_match('/^\d+$/', $raw) === 1 && (int) $raw >= $min && (int) $raw <= $max) {
+                    $values[$key] = (int) $raw;
+                } else {
+                    $errors[] = sprintf($message, $min, $max);
+                }
+            }
+        }
         if (array_key_exists('policy_mode', $post)) {
             $values['policy_mode'] = (string) $post['policy_mode'] === Policy::MODE_MANUAL ? Policy::MODE_MANUAL : Policy::MODE_FIELD;
         }
@@ -103,6 +126,21 @@ class SuiteConfig
         }
 
         return ['values' => $values, 'errors' => $errors];
+    }
+
+    /**
+     * Pure: switching tickets on stores the start time (runs before it never open a ticket);
+     * switching off and on again restarts it.
+     *
+     * @param array<string, int|string> $values sanitized values to store
+     * @return array<string, int|string>
+     */
+    public static function withTicketsSince(array $values, bool $wasEnabled, int $nowS): array
+    {
+        if (!empty($values['tickets_enabled']) && !$wasEnabled) {
+            $values['tickets_since'] = date('Y-m-d H:i:s', $nowS);
+        }
+        return $values;
     }
 
     /**
@@ -233,8 +271,11 @@ class SuiteConfig
         }
         echo '</div></div>';
 
+        self::ticketsCard($canedit);
+
         if ($canedit) {
             echo Html::submit(_sx('button', 'Save'), ['name' => 'update', 'class' => 'btn btn-primary']);
+            echo ' ' . Html::submit(__('What would be created now', 'backupinfo'), ['name' => 'dryrun_tickets', 'class' => 'btn btn-outline-secondary']);
         }
         Html::closeForm();
 
@@ -330,4 +371,33 @@ class SuiteConfig
         }
         return $ids;
     }
+
+    /** 0.4.0: Incidents, Problems and findings (off until switched on). */
+    private static function ticketsCard(bool $canedit): void
+    {
+        $cfg = Config::getConfigurationValues(self::CONTEXT, ['tickets_enabled', 'tickets_since', 'ticket_template', 'problem_template', 'problem_count', 'problem_days', 'findings_enabled']);
+        echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __s('Tickets and findings', 'backupinfo') . '</h3></div><div class="card-body">';
+        foreach ([
+            'tickets_enabled'  => __('Open an Incident for each failed backup of a computer that must be backed up, and a Problem for repeated failures', 'backupinfo'),
+            'findings_enabled' => __('Write Risk Register findings (coverage, restore tests, repeated failures)', 'backupinfo'),
+        ] as $key => $label) {
+            echo '<div class="mb-3 form-check"><input type="hidden" name="' . $key . '" value="0">';
+            echo '<input type="checkbox" class="form-check-input" id="backupinfo-' . $key . '" name="' . $key . '" value="1"' . (empty($cfg[$key]) ? '' : ' checked') . ($canedit ? '' : ' disabled') . '>';
+            echo '<label class="form-check-label" for="backupinfo-' . $key . '">' . htmlescape($label) . '</label></div>';
+        }
+        if (!empty($cfg['tickets_enabled']) && !empty($cfg['tickets_since'])) {
+            echo '<div class="form-hint mb-3">' . htmlescape(sprintf(__('Only backups started after %s open a ticket.', 'backupinfo'), $cfg['tickets_since'])) . '</div>';
+        }
+        echo '<div class="mb-3"><label class="form-label">' . __s('Incident template (requester, groups, supplier, category, urgency)', 'backupinfo') . '</label>';
+        \TicketTemplate::dropdown(['name' => 'ticket_template', 'value' => (int) ($cfg['ticket_template'] ?? 0), 'entity' => 0, 'width' => '100%']);
+        echo '</div><div class="mb-3"><label class="form-label">' . __s('Problem template', 'backupinfo') . '</label>';
+        \ProblemTemplate::dropdown(['name' => 'problem_template', 'value' => (int) ($cfg['problem_template'] ?? 0), 'entity' => 0, 'width' => '100%']);
+        echo '<div class="form-hint">' . __s('Fill in the templates in Setup > Templates. Their predefined fields are copied into each ticket.', 'backupinfo') . '</div></div>';
+        echo '<div class="row"><div class="col-md-6 mb-3"><label class="form-label" for="backupinfo-pcount">' . __s('Failures before a Problem', 'backupinfo') . '</label>';
+        echo '<input type="number" min="1" max="50" class="form-control" id="backupinfo-pcount" name="problem_count" value="' . (int) ($cfg['problem_count'] ?? 3) . '"' . ($canedit ? '' : ' disabled') . '></div>';
+        echo '<div class="col-md-6 mb-3"><label class="form-label" for="backupinfo-pdays">' . __s('Within (days)', 'backupinfo') . '</label>';
+        echo '<input type="number" min="1" max="365" class="form-control" id="backupinfo-pdays" name="problem_days" value="' . (int) ($cfg['problem_days'] ?? 30) . '"' . ($canedit ? '' : ' disabled') . '></div></div>';
+        echo '</div></div>';
+    }
+
 }

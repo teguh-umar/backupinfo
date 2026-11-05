@@ -57,8 +57,8 @@ final class AuditData
         $table = match ($key) {
             'policy'     => AuditPage::policy($this->computers, $this->objects(), Rpo::fromConfig()),
             'coverage'   => AuditPage::coverage($this->computers, $this->objects(), Rpo::fromConfig(), ($this->computers === [] ? [] : $this->snapshotRows('platformvm')), time()),
-            'population' => AuditPage::population($this->computers, $this->runs ??= $this->readRuns($ids, $from, $to)),
-            'failures'   => AuditPage::failures($this->computers, $this->runs ??= $this->readRuns($ids, $from, $to)),
+            'population' => AuditPage::population($this->computers, $this->runs ??= self::runRows($ids, $from, $to)),
+            'failures'   => AuditPage::failures($this->computers, $this->runs ??= self::runRows($ids, $from, $to)),
             'restore'    => AuditPage::restore($this->computers, self::tests($ids, substr($to, 0, 10)), RestoreInterval::overrides($ids),
                 RestoreInterval::globalMonths(), substr($from, 0, 10), substr($to, 0, 10)),
             'copies'     => AuditPage::copies($this->computers, $this->objects(), ($this->computers === [] ? [] : $this->events('copy', $from, $to))),
@@ -200,7 +200,7 @@ final class AuditData
      *
      * @return list<array<string, mixed>>
      */
-    private function readRuns(array $ids, string $from, string $to): array
+    public static function runRows(array $ids, string $from, string $to): array
     {
         global $DB;
 

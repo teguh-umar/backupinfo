@@ -228,4 +228,13 @@ check('Menu: each option behind its right', str_contains($menu, 'Session::haveRi
 check('objects filter is a bordered button group, not nav-pills', str_contains($obj, '<div class="btn-group mb-3" role="group"') && !str_contains($obj, '<ul class="nav nav-pills'));
 check('src/Api removed', !is_dir(BI_ROOT . '/src/Api'));
 
+// --- 0.4.0 tickets settings
+$t = SuiteConfig::sanitize(['tickets_enabled' => '1', 'findings_enabled' => '0', 'ticket_template' => '5', 'problem_template' => '-2', 'problem_count' => '3', 'problem_days' => '400']);
+check('tickets: switches as 0/1, template ids never negative', $t['values']['tickets_enabled'] === 1 && $t['values']['findings_enabled'] === 0 && $t['values']['ticket_template'] === 5 && $t['values']['problem_template'] === 0);
+check('tickets: problem window out of range refused, the rest kept', !isset($t['values']['problem_days']) && $t['values']['problem_count'] === 3 && count($t['errors']) === 1);
+$now = strtotime('2026-11-05 10:00:00');
+check('tickets: switching on stores the start time', SuiteConfig::withTicketsSince(['tickets_enabled' => 1], false, $now)['tickets_since'] === '2026-11-05 10:00:00');
+check('tickets: saving while on keeps the start time', !isset(SuiteConfig::withTicketsSince(['tickets_enabled' => 1], true, $now)['tickets_since']));
+check('tickets: off stays off, no start time', !isset(SuiteConfig::withTicketsSince(['tickets_enabled' => 0], false, $now)['tickets_since']));
+
 done();

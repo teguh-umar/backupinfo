@@ -7,6 +7,7 @@ function plugin_backupinfo_uninstall()
     $tables = [
         'glpi_plugin_backupinfo_events',
         'glpi_plugin_backupinfo_snapshots',
+        'glpi_plugin_backupinfo_tickets',
         'glpi_plugin_backupinfo_runs_items',
         'glpi_plugin_backupinfo_runs',
         'glpi_plugin_backupinfo_restoretests',

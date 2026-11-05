@@ -17,6 +17,7 @@ use GlpiPlugin\Backupinfo\Sync\DbRunStore;
 use GlpiPlugin\Backupinfo\Sync\EventSync;
 use GlpiPlugin\Backupinfo\Sync\DbSnapshotStore;
 use GlpiPlugin\Backupinfo\Sync\SnapshotSync;
+use GlpiPlugin\Backupinfo\Tickets\TicketService;
 use GlpiPlugin\Backupinfo\Sync\RunSync;
 use GlpiPlugin\Backupinfo\Sync\SyncService;
 use GlpiPlugin\Backupinfo\Sync\VerifyImport;
@@ -136,6 +137,7 @@ final class Cron extends \CommonGLPI
         self::storeRuns($out['results'], $sources, $now, $log);
         self::storeEvents($out['results'], $sources, $now, $log);
         self::storeSnapshots($out['results'], $sources, $now, $log);
+        self::raiseTickets($now, $log);
         self::importVerifications($out['results'], $sources, $log);
 
         $fieldsError = '';
@@ -214,6 +216,28 @@ final class Cron extends \CommonGLPI
             $store->purgeOlderThan((int) ($cfg['run_keep_months'] ?? 36), $now);
         } catch (\Throwable $e) {
             Toolbox::logInFile('backupinfo', 'Events purge: ' . SyncService::errorLine($e) . "\n");
+        }
+    }
+
+    /**
+     * 0.4.0: Incidents for new failed runs and Problems for repeated failures (off until enabled in
+     * Setup). Never fails the sync.
+     */
+    private static function raiseTickets(int $now, callable $log): void
+    {
+        try {
+            $res = TicketService::run(false, $now);
+            if ($res['incidents'] !== [] || $res['problems'] !== [] || $res['links'] > 0) {
+                $log(sprintf('tickets: %d incident(s), %d problem(s), %d link(s)', count($res['incidents']), count($res['problems']), $res['links']));
+            }
+            if ($res['errors'] !== []) {
+                Toolbox::logInFile('backupinfo', 'Tickets: ' . implode('; ', $res['errors']) . "\n");
+                $log(sprintf('tickets: %d error(s), see backupinfo.log', count($res['errors'])));
+            }
+        } catch (\Throwable $e) {
+            $line = 'Tickets: ' . SyncService::errorLine($e);
+            Toolbox::logInFile('backupinfo', $line . "\n");
+            $log($line);
         }
     }
 
