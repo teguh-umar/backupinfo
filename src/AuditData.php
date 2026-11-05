@@ -58,7 +58,7 @@ final class AuditData
             'policy'     => AuditPage::policy($this->computers, $this->objects(), Rpo::fromConfig()),
             'coverage'   => AuditPage::coverage($this->computers, $this->objects(), Rpo::fromConfig(), ($this->computers === [] ? [] : $this->snapshotRows('platformvm')), time()),
             'population' => AuditPage::population($this->computers, $this->runs ??= self::runRows($ids, $from, $to)),
-            'failures'   => AuditPage::failures($this->computers, $this->runs ??= self::runRows($ids, $from, $to)),
+            'failures'   => AuditPage::failures($this->computers, $this->runs ??= self::runRows($ids, $from, $to), self::tickets()),
             'restore'    => AuditPage::restore($this->computers, self::tests($ids, substr($to, 0, 10)), RestoreInterval::overrides($ids),
                 RestoreInterval::globalMonths(), substr($from, 0, 10), substr($to, 0, 10)),
             'copies'     => AuditPage::copies($this->computers, $this->objects(), ($this->computers === [] ? [] : $this->events('copy', $from, $to))),
@@ -191,6 +191,21 @@ final class AuditData
             }
         }
         asort($out, SORT_NATURAL | SORT_FLAG_CASE);
+        return $out;
+    }
+
+    /** @return array<string, array{tickets_id: int, problems_id: int}> the plugin's tickets, "runs_id|computers_id" => ids */
+    private static function tickets(): array
+    {
+        global $DB;
+
+        $out = [];
+        if (!$DB->tableExists('glpi_plugin_backupinfo_tickets')) {
+            return $out;
+        }
+        foreach ($DB->request(['SELECT' => ['runs_id', 'computers_id', 'tickets_id', 'problems_id'], 'FROM' => 'glpi_plugin_backupinfo_tickets']) as $t) {
+            $out[$t['runs_id'] . '|' . $t['computers_id']] = ['tickets_id' => (int) $t['tickets_id'], 'problems_id' => (int) $t['problems_id']];
+        }
         return $out;
     }
 

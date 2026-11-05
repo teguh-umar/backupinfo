@@ -53,7 +53,7 @@ check('coverage: note says it is current, not historical', str_contains($s['note
 
 $runs = [
     ['computers_id' => 11, 'vm_name' => 'VM-A', 'job_name' => 'JOB-1', 'start_time' => '2026-10-02 01:00:00', 'finish_time' => '2026-10-02 01:10:00', 'status' => 'success', 'item_status' => 'success', 'duration_s' => 600, 'size_text' => '1GB', 'history_uuid' => 'u1', 'reason' => null, 'connection' => 'C1'],
-    ['computers_id' => 12, 'vm_name' => 'VM-B', 'job_name' => 'JOB-1', 'start_time' => '2026-10-03 01:00:00', 'finish_time' => '2026-10-03 01:00:09', 'status' => 'failed', 'item_status' => 'failed', 'duration_s' => 9, 'size_text' => '0B', 'history_uuid' => 'u2', 'reason' => 'Failed to prepare', 'connection' => 'C1'],
+    ['runs_id' => 2, 'computers_id' => 12, 'vm_name' => 'VM-B', 'job_name' => 'JOB-1', 'start_time' => '2026-10-03 01:00:00', 'finish_time' => '2026-10-03 01:00:09', 'status' => 'failed', 'item_status' => 'failed', 'duration_s' => 9, 'size_text' => '0B', 'history_uuid' => 'u2', 'reason' => 'Failed to prepare', 'connection' => 'C1'],
     ['computers_id' => 11, 'vm_name' => 'VM-A', 'job_name' => 'JOB-1', 'start_time' => '2026-10-03 01:00:00', 'finish_time' => '2026-10-03 01:00:09', 'status' => 'failed', 'item_status' => 'success', 'duration_s' => 9, 'size_text' => '0B', 'history_uuid' => 'u2', 'reason' => 'Failed to prepare', 'connection' => 'C1'],
 ];
 $s = AuditPage::population($computers, $runs);
@@ -61,6 +61,8 @@ check('population: one line per run x Computer', count($s['rows']) === 3 && $s['
 check('population: columns', $s['columns'][0] === 'Computer' && in_array('Run ID', $s['columns'], true));
 $s = AuditPage::failures($computers, $runs);
 check('failures: only items that failed (a VM that succeeded in a failed run is not a failure)', count($s['rows']) === 1 && $s['rows'][0][0] === 'SRV-B' && $s['rows'][0][5] === 'Failed to prepare');
+$s = AuditPage::failures($computers, $runs, ['2|12' => ['tickets_id' => 501, 'problems_id' => 0]]);
+check('failures: Incident and Problem of the plugin shown (follow-up evidence)', $s['rows'][0][8] === '#501' && $s['rows'][0][9] === '' && $s['columns'][8] === 'Incident');
 
 $tests = [
     ['computers_id' => 11, 'date' => '2026-10-15', 'method' => 'vm_restore', 'result' => 'pass', 'source' => 'manual'],

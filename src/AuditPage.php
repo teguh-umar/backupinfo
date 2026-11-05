@@ -130,6 +130,8 @@ final class AuditPage
                 (string) ($r['size_text'] ?? ''),
                 (string) $r['history_uuid'],
                 (string) ($r['connection'] ?? ''),
+                ($t = $tickets[(int) ($r['runs_id'] ?? 0) . '|' . (int) $r['computers_id']] ?? null) !== null && $t['tickets_id'] > 0 ? '#' . $t['tickets_id'] : '',
+                $t !== null && $t['problems_id'] > 0 ? '#' . $t['problems_id'] : '',
             ];
         }
         return [
@@ -139,7 +141,8 @@ final class AuditPage
         ];
     }
 
-    public static function failures(array $computers, array $runs): array
+    /** @param array<string, array{tickets_id: int, problems_id: int}> $tickets "runs_id|computers_id" => the plugin's tickets */
+    public static function failures(array $computers, array $runs, array $tickets = []): array
     {
         $rows = [];
         foreach ($runs as $r) {
@@ -158,9 +161,9 @@ final class AuditPage
             ];
         }
         return [
-            'columns' => ['Computer', 'Job', 'Start', 'Finish', 'VM', 'Reason', 'Run ID', 'Connection'],
+            'columns' => ['Computer', 'Job', 'Start', 'Finish', 'VM', 'Reason', 'Run ID', 'Connection', 'Incident', 'Problem'],
             'rows'    => $rows,
-            'note'    => __('Failed backups of in-scope Computers in the period. The reason comes from the backup system\'s job alarm; it is empty when no alarm matched.', 'backupinfo'),
+            'note'    => __('Failed backups of in-scope Computers in the period. The reason comes from the backup system\'s job alarm; it is empty when no alarm matched. Incident and Problem are the tickets Backup Info opened (follow-up evidence).', 'backupinfo'),
         ];
     }
 
