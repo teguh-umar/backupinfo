@@ -1,5 +1,32 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.4.0-rc1 — 2026-11-05 (release candidate)
+
+Follow-up of backup failures in GLPI (stage 3). **Everything is off until switched on** in
+Setup › Backup Info › Tickets and findings.
+
+- **Incident per failed backup.** One Incident is opened for each failed run × Computer that must be
+  backed up, once. Only Failed runs count, not Warning. Runs that started before the switch was
+  turned on never open one. The Computer is linked, and the content gives the reason, job, times,
+  VM, connection and run reference.
+- **Problem for repeated failures.** It opens after 3 failures within 30 days; both numbers are in
+  Setup. The Computer and its Incidents are linked to it, and new Incidents are linked while it is
+  open. After it is solved, a new streak opens a new Problem.
+- **Ticket templates.** "Backup Info - Backup failed" (Incident) and "Backup Info - Repeated backup
+  failure" (Problem) are created on upgrade, in the root entity and recursive.
+  - Their predefined fields are copied into each ticket: requester, assigned groups, supplier,
+    category, urgency and impact. GLPI does not apply them to a ticket added by code.
+- **The plugin never edits, solves or closes a ticket.** It only adds tickets and links them.
+- **Dry run.** "What would be created now" lists the would-be tickets and writes nothing. It warns
+  when a template assigns nobody or has no requester.
+- **Risk Register findings**, when Risk Register is active. There is one finding per entity and
+  code, mapped to ISO 27001 A.8.13:
+  - BI-COVERAGE: not protected;
+  - BI-RESTORE: no passed restore test in its interval;
+  - BI-REPEAT: a Problem is open.
+  - The status someone sets is kept. When the signal goes, a "Signal cleared" note is added.
+- **Tab 4 Failures** shows the Incident and the Problem of each failure.
+
 ## 0.3.0 — 2026-11-05
 
 Audit evidence release (ISO 27001, internal audit, ICOFR). Same code as 0.3.0-rc7, confirmed on the

@@ -82,7 +82,7 @@ final class TicketService
                 'problems_id' => 0, 'date_creation' => date('Y-m-d H:i:s', $nowS)]);
         }
 
-        // 2. Problems (on the Incidents stored so far; a dry run counts the would-be ones too)
+        // 2. Problems, on the Incidents stored so far (a dry run does not count the would-be ones)
         $incidents = [];
         foreach ($DB->request([
             'SELECT'     => ['t.tickets_id', 't.computers_id', 't.problems_id', 'r.start_time'],
@@ -132,7 +132,7 @@ final class TicketService
     }
 
     /** @return array<int, int> Computer => open plugin Problem (not solved or closed) */
-    private static function openProblems(): array
+    public static function openProblems(): array
     {
         global $DB;
 

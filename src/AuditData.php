@@ -59,7 +59,7 @@ final class AuditData
             'coverage'   => AuditPage::coverage($this->computers, $this->objects(), Rpo::fromConfig(), ($this->computers === [] ? [] : $this->snapshotRows('platformvm')), time()),
             'population' => AuditPage::population($this->computers, $this->runs ??= self::runRows($ids, $from, $to)),
             'failures'   => AuditPage::failures($this->computers, $this->runs ??= self::runRows($ids, $from, $to), self::tickets()),
-            'restore'    => AuditPage::restore($this->computers, self::tests($ids, substr($to, 0, 10)), RestoreInterval::overrides($ids),
+            'restore'    => AuditPage::restore($this->computers, self::restoreTests($ids, substr($to, 0, 10)), RestoreInterval::overrides($ids),
                 RestoreInterval::globalMonths(), substr($from, 0, 10), substr($to, 0, 10)),
             'copies'     => AuditPage::copies($this->computers, $this->objects(), ($this->computers === [] ? [] : $this->events('copy', $from, $to))),
             'activity'   => $this->activity($from, $to, $errors),
@@ -249,7 +249,7 @@ final class AuditData
     }
 
     /** @return list<array<string, mixed>> */
-    private static function tests(array $ids, string $toDate): array
+    public static function restoreTests(array $ids, string $toDate): array
     {
         global $DB;
 

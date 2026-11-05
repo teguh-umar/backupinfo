@@ -17,6 +17,7 @@ use GlpiPlugin\Backupinfo\Sync\DbRunStore;
 use GlpiPlugin\Backupinfo\Sync\EventSync;
 use GlpiPlugin\Backupinfo\Sync\DbSnapshotStore;
 use GlpiPlugin\Backupinfo\Sync\SnapshotSync;
+use GlpiPlugin\Backupinfo\Tickets\FindingService;
 use GlpiPlugin\Backupinfo\Tickets\TicketService;
 use GlpiPlugin\Backupinfo\Sync\RunSync;
 use GlpiPlugin\Backupinfo\Sync\SyncService;
@@ -138,6 +139,7 @@ final class Cron extends \CommonGLPI
         self::storeEvents($out['results'], $sources, $now, $log);
         self::storeSnapshots($out['results'], $sources, $now, $log);
         self::raiseTickets($now, $log);
+        self::raiseFindings($now, $log);
         self::importVerifications($out['results'], $sources, $log);
 
         $fieldsError = '';
@@ -216,6 +218,25 @@ final class Cron extends \CommonGLPI
             $store->purgeOlderThan((int) ($cfg['run_keep_months'] ?? 36), $now);
         } catch (\Throwable $e) {
             Toolbox::logInFile('backupinfo', 'Events purge: ' . SyncService::errorLine($e) . "\n");
+        }
+    }
+
+    /** 0.4.0: Risk Register findings (off until enabled, only with riskregister). Never fails the sync. */
+    private static function raiseFindings(int $now, callable $log): void
+    {
+        try {
+            $res = FindingService::run($now);
+            if ($res['written'] > 0 || $res['cleared'] > 0) {
+                $log(sprintf('findings: %d written, %d cleared', $res['written'], $res['cleared']));
+            }
+            if ($res['errors'] !== []) {
+                Toolbox::logInFile('backupinfo', 'Findings: ' . implode('; ', $res['errors']) . "\n");
+                $log(sprintf('findings: %d error(s), see backupinfo.log', count($res['errors'])));
+            }
+        } catch (\Throwable $e) {
+            $line = 'Findings: ' . SyncService::errorLine($e);
+            Toolbox::logInFile('backupinfo', $line . "\n");
+            $log($line);
         }
     }
 
