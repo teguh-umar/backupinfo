@@ -51,6 +51,7 @@ check('page: sections render GLPI\'s datatable', str_contains($page, "render('co
 check('page: reloadTab defined for the section on screen', str_contains($page, 'window.reloadTab = (add) =>') && str_contains($page, '.tab-pane.active'));
 check('page: filter row bound per section (show filters, input, change, Enter)', str_contains($page, '".show_filters"') && str_contains($page, '"input", ".filter_row') && str_contains($page, '"change", ".filter_row') && str_contains($page, 'ev.key === "Enter"'));
 check('page: Columns menu kept per section in this browser', str_contains($page, '"backupinfo.audit.cols." + key') && str_contains($page, 'id="backupinfo-audit-cols-'));
+check('page: Columns checkboxes stay inside the menu (no .form-check negative margin)', str_contains($page, '"dropdown-item d-flex align-items-center gap-2"') && !str_contains($page, 'dropdown-item form-check'));
 check('page: localStorage wrapped in try', substr_count($page, 'try { localStorage') === 1 && str_contains($page, 'try { return new Set(JSON.parse(localStorage'));
 check('page: no 500-row screen cap any more', !str_contains($page, '$maxRows'));
 // Exports stay complete (user, 2026-11-06): they never read the screen filters.

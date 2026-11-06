@@ -214,8 +214,8 @@ echo Html::scriptBlock('(() => {
         menu.textContent = "";
         names.forEach((name) => {
             const label = document.createElement("label"), box = document.createElement("input");
-            label.className = "dropdown-item form-check m-0";
-            box.type = "checkbox"; box.className = "form-check-input me-2"; box.checked = !hidden.has(name);
+            label.className = "dropdown-item d-flex align-items-center gap-2"; // no .form-check: its negative margin pushes the box out of the menu
+            box.type = "checkbox"; box.className = "form-check-input m-0 flex-shrink-0"; box.checked = !hidden.has(name);
             box.addEventListener("change", () => { const h = hiddenCols(key); box.checked ? h.delete(name) : h.add(name); saveHidden(key, h); applyCols(key, body); });
             label.append(box, document.createTextNode(name));
             menu.appendChild(label);
