@@ -8,6 +8,7 @@ use GlpiPlugin\Backupinfo\AuditData;
 use GlpiPlugin\Backupinfo\Policy;
 use GlpiPlugin\Backupinfo\SuiteConfig;
 use Item_Problem;
+use ITILFollowup;
 use Problem;
 use Problem_Ticket;
 use ProblemTemplatePredefinedField;
@@ -32,8 +33,8 @@ final class TicketService
     {
         global $DB;
 
-        $out = ['incidents' => [], 'problems' => [], 'links' => 0, 'warnings' => [], 'errors' => []];
-        $cfg = Config::getConfigurationValues(SuiteConfig::CONTEXT, ['tickets_enabled', 'tickets_since', 'ticket_template', 'problem_template', 'problem_count', 'problem_days']);
+        $out = ['incidents' => [], 'problems' => [], 'links' => 0, 'followups' => 0, 'warnings' => [], 'errors' => []];
+        $cfg = Config::getConfigurationValues(SuiteConfig::CONTEXT, ['tickets_enabled', 'tickets_since', 'ticket_template', 'problem_template', 'problem_count', 'problem_days', 'followup_on_success']);
         if (!$dry && empty($cfg['tickets_enabled'])) {
             return $out;
         }
@@ -80,6 +81,33 @@ final class TicketService
             }
             $DB->insert(self::TABLE, ['runs_id' => $i['runs_id'], 'computers_id' => $i['computers_id'], 'tickets_id' => (int) $id,
                 'problems_id' => 0, 'date_creation' => date('Y-m-d H:i:s', $nowS)]);
+        }
+
+        // 1b. Optional: "Backup succeeded again" once on an open Incident (never solves or closes it)
+        if (!empty($cfg['followup_on_success'])) {
+            $open = [];
+            foreach ($DB->request([
+                'SELECT'     => ['t.tickets_id', 't.computers_id', 'r.start_time'],
+                'FROM'       => self::TABLE . ' AS t',
+                'INNER JOIN' => [
+                    'glpi_plugin_backupinfo_runs AS r' => ['ON' => ['t' => 'runs_id', 'r' => 'id']],
+                    'glpi_tickets AS k'                => ['ON' => ['t' => 'tickets_id', 'k' => 'id']],
+                ],
+                'WHERE'      => ['t.followup_done' => 0, 'k.is_deleted' => 0, ['NOT' => ['k.status' => [CommonITILObject::SOLVED, CommonITILObject::CLOSED]]]],
+            ]) as $r) {
+                $open[] = ['tickets_id' => (int) $r['tickets_id'], 'computers_id' => (int) $r['computers_id'], 'start_time' => (string) $r['start_time']];
+            }
+            foreach (FollowupPlan::plan($open, $rows) as $f) {
+                $out['followups']++;
+                if ($dry) {
+                    continue;
+                }
+                if ((new ITILFollowup())->add(['itemtype' => 'Ticket', 'items_id' => $f['tickets_id'], 'content' => $f['content'], 'is_private' => 0])) {
+                    $DB->update(self::TABLE, ['followup_done' => 1], ['tickets_id' => $f['tickets_id']]);
+                } else {
+                    $out['errors'][] = 'Follow-up not added to ticket #' . $f['tickets_id'];
+                }
+            }
         }
 
         // 2. Problems, on the Incidents stored so far (a dry run does not count the would-be ones)

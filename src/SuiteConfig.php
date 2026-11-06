@@ -93,7 +93,7 @@ class SuiteConfig
                 $errors[] = __('The GLPI server addresses must be IP addresses, separated by commas; they were not changed.', 'backupinfo');
             }
         }
-        foreach (['tickets_enabled', 'findings_enabled'] as $key) {
+        foreach (['tickets_enabled', 'findings_enabled', 'followup_on_success'] as $key) {
             if (array_key_exists($key, $post)) {
                 $values[$key] = (int) (bool) $post[$key];
             }
@@ -281,7 +281,7 @@ class SuiteConfig
 
         if ($canedit) {
             echo '<form method="post" class="mt-3" action="' . htmlescape($action) . '">';
-            echo '<span class="me-2">' . __s('Run the sync of every active connection now (same as the hourly automatic action).', 'backupinfo') . '</span>';
+            echo '<span class="me-2">' . __s('Run the sync of every active connection now (same as automatic action).', 'backupinfo') . '</span>';
             echo Html::submit(__('Sync now', 'backupinfo'), ['name' => 'sync_now', 'class' => 'btn btn-outline-secondary']);
             Html::closeForm();
         }
@@ -375,10 +375,11 @@ class SuiteConfig
     /** 0.4.0: Incidents, Problems and findings (off until switched on). */
     private static function ticketsCard(bool $canedit): void
     {
-        $cfg = Config::getConfigurationValues(self::CONTEXT, ['tickets_enabled', 'tickets_since', 'ticket_template', 'problem_template', 'problem_count', 'problem_days', 'findings_enabled']);
+        $cfg = Config::getConfigurationValues(self::CONTEXT, ['tickets_enabled', 'tickets_since', 'ticket_template', 'problem_template', 'problem_count', 'problem_days', 'findings_enabled', 'followup_on_success']);
         echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __s('Tickets and findings', 'backupinfo') . '</h3></div><div class="card-body">';
         foreach ([
             'tickets_enabled'  => __('Open an Incident for each failed backup of a computer that must be backed up, and a Problem for repeated failures', 'backupinfo'),
+            'followup_on_success' => __('Add one follow-up "Backup succeeded again" to the open Incident when a later backup of that computer succeeds (the Incident is not closed)', 'backupinfo'),
             'findings_enabled' => __('Write Risk Register findings (coverage, restore tests, repeated failures)', 'backupinfo'),
         ] as $key => $label) {
             echo '<div class="mb-3 form-check"><input type="hidden" name="' . $key . '" value="0">';

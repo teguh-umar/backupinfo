@@ -59,10 +59,11 @@ if (isset($_POST['dryrun_tickets'])) {
     }
     $lines = array_merge($res['incidents'], $res['problems']);
     Session::addMessageAfterRedirect(htmlescape(sprintf(
-        __('Dry run, nothing written: %1$d incident(s), %2$d problem(s), %3$d link(s) to open problems.', 'backupinfo'),
+        __('Dry run, nothing written: %1$d incident(s), %2$d problem(s), %3$d link(s) to open problems, %4$d follow-up(s).', 'backupinfo'),
         count($res['incidents']),
         count($res['problems']),
-        $res['links']
+        $res['links'],
+        $res['followups']
     )) . ($lines === [] ? '' : '<br>' . implode('<br>', array_map('htmlescape', array_slice($lines, 0, 20)))));
     Html::redirect(ConfigTab::getReturnUrl('backupinfo'));
 }

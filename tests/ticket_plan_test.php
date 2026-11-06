@@ -5,11 +5,13 @@ require BI_ROOT . '/src/Tickets/IncidentPlan.php';
 require BI_ROOT . '/src/Tickets/ProblemPlan.php';
 require BI_ROOT . '/src/Tickets/TicketInput.php';
 require BI_ROOT . '/src/Tickets/FindingPlan.php';
+require BI_ROOT . '/src/Tickets/FollowupPlan.php';
 
 use GlpiPlugin\Backupinfo\Tickets\IncidentPlan;
 use GlpiPlugin\Backupinfo\Tickets\ProblemPlan;
 use GlpiPlugin\Backupinfo\Tickets\TicketInput;
 use GlpiPlugin\Backupinfo\Tickets\FindingPlan;
+use GlpiPlugin\Backupinfo\Tickets\FollowupPlan;
 
 $row = static fn (int $run, int $c, string $item = 'failed', string $start = '2026-11-10 01:00:00', string $reason = 'Disk full'): array => [
     'runs_id' => $run, 'computers_id' => $c, 'vm_name' => 'VM-' . $c, 'item_status' => $item, 'status' => 'failed',
@@ -55,7 +57,7 @@ check('template warnings: none selected', count(TicketInput::warnings([], '')) =
 // --- wiring
 $read = static fn (string $rel): string => (string) @file_get_contents(BI_ROOT . '/' . $rel);
 $svc  = $read('src/Tickets/TicketService.php');
-check('service: off until enabled, dry run writes nothing', str_contains($svc, "if (!\$dry && empty(\$cfg['tickets_enabled']))") && substr_count($svc, 'if ($dry) {') === 2);
+check('service: off until enabled, dry run writes nothing', str_contains($svc, "if (!\$dry && empty(\$cfg['tickets_enabled']))") && substr_count($svc, 'if ($dry) {') === 3);
 check('service: never updates or closes a ticket (adds and links only)', !preg_match('/(new Ticket\(\)|\$ticket)->update\(|->delete\(/', $svc) && !str_contains($svc, "'status' =>"));
 check('service: link row written only after the add succeeded', strpos($svc, "if (!\$id) {") < strpos($svc, '$DB->insert(self::TABLE'));
 check('service: templates created once, root entity, recursive', str_contains($svc, "'entities_id' => 0, 'is_recursive' => 1") && str_contains($read('install/install.php'), 'TicketService::ensureTemplates()'));
@@ -75,5 +77,14 @@ check('cron: findings after tickets', strpos($read('src/Cron.php'), 'self::raise
 
 check('findings: rc1 BI-* codes renamed to BCKP-* once', str_contains($fs, "self::REF . 'BI-%'") && str_contains($fs, "'BCKP-' . substr("));
 check('findings: codes are BCKP-*', array_keys(FindingPlan::CODES) === ['BCKP-COVERAGE', 'BCKP-RESTORE', 'BCKP-REPEAT']);
+
+// --- optional follow-up "Backup succeeded again"
+$open = [['tickets_id' => 501, 'computers_id' => 11, 'start_time' => '2026-11-10 01:00:00'], ['tickets_id' => 502, 'computers_id' => 12, 'start_time' => '2026-11-10 01:00:00']];
+$rows = [$row(8, 11, 'success', '2026-11-12 01:00:00'), $row(9, 11, 'success', '2026-11-11 01:00:00'), $row(10, 12, 'success', '2026-11-09 01:00:00'), $row(11, 12, 'failed', '2026-11-12 01:00:00')];
+$fu   = FollowupPlan::plan($open, $rows);
+check('follow-up: first later success of that Computer only', count($fu) === 1 && $fu[0]['tickets_id'] === 501 && str_contains($fu[0]['content'], 'Backup succeeded again') && str_contains($fu[0]['content'], 'not closed'), json_encode($fu));
+check('follow-up: no later success -> nothing', FollowupPlan::plan([$open[1]], $rows) === []);
+$svc = $read('src/Tickets/TicketService.php');
+check('follow-up: off by default, once per Incident, open Incidents only, never closes', str_contains($svc, "if (!empty(\$cfg['followup_on_success']))") && str_contains($svc, "'t.followup_done' => 0") && str_contains($svc, "'k.status' => [CommonITILObject::SOLVED, CommonITILObject::CLOSED]") && str_contains($read('install/install.php'), "'followup_on_success'    => 0"));
 
 done();

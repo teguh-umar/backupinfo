@@ -1,5 +1,14 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.4.0-rc3 — 2026-11-06 (release candidate)
+
+- **Optional follow-up "Backup succeeded again"**, off by default. When a later backup of the same
+  Computer succeeds, one follow-up is added to its open plugin Incident, with the time, job and VM.
+  - It is added once per Incident.
+  - The Incident is not solved or closed; the technician decides.
+  - The dry run counts them.
+- Setup: the "Sync now" text no longer says "hourly"; the interval is the automatic action's own.
+
 ## 0.4.0-rc2 — 2026-11-05 (release candidate)
 
 - **Risk Register codes are now `BCKP-COVERAGE`, `BCKP-RESTORE` and `BCKP-REPEAT`.** The rc1 codes

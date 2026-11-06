@@ -160,12 +160,18 @@ function plugin_backupinfo_install()
             `computers_id` int unsigned NOT NULL DEFAULT 0,
             `tickets_id` int unsigned NOT NULL DEFAULT 0,
             `problems_id` int unsigned NOT NULL DEFAULT 0,
+            `followup_done` tinyint NOT NULL DEFAULT 0,
             `date_creation` timestamp NULL DEFAULT NULL,
             PRIMARY KEY (`id`),
             UNIQUE KEY `unicity` (`runs_id`, `computers_id`),
             KEY `computers_id` (`computers_id`),
             KEY `tickets_id` (`tickets_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    }
+
+    // 0.4.0-rc3: the optional "Backup succeeded again" follow-up is added once per Incident
+    if (!$DB->fieldExists('glpi_plugin_backupinfo_tickets', 'followup_done')) {
+        $DB->doQuery("ALTER TABLE `glpi_plugin_backupinfo_tickets` ADD COLUMN `followup_done` tinyint NOT NULL DEFAULT 0 AFTER `problems_id`");
     }
 
     // 0.3.0-rc7: daily state of what the backup system only shows "as of now" (targets, platform VMs)
@@ -270,6 +276,7 @@ function plugin_backupinfo_install()
         'problem_count'          => 3,
         'problem_days'           => 30,
         'findings_enabled'       => 0,
+        'followup_on_success'    => 0,
     ];
     $current = Config::getConfigurationValues($ctx, array_keys($defaults));
     $missing = array_diff_key($defaults, $current);

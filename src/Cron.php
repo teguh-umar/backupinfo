@@ -248,8 +248,8 @@ final class Cron extends \CommonGLPI
     {
         try {
             $res = TicketService::run(false, $now);
-            if ($res['incidents'] !== [] || $res['problems'] !== [] || $res['links'] > 0) {
-                $log(sprintf('tickets: %d incident(s), %d problem(s), %d link(s)', count($res['incidents']), count($res['problems']), $res['links']));
+            if ($res['incidents'] !== [] || $res['problems'] !== [] || $res['links'] > 0 || $res['followups'] > 0) {
+                $log(sprintf('tickets: %d incident(s), %d problem(s), %d link(s), %d follow-up(s)', count($res['incidents']), count($res['problems']), $res['links'], $res['followups']));
             }
             if ($res['errors'] !== []) {
                 Toolbox::logInFile('backupinfo', 'Tickets: ' . implode('; ', $res['errors']) . "\n");
