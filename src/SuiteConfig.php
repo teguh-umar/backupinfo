@@ -187,8 +187,7 @@ class SuiteConfig
         $problems  = $bridge->problems();
         $fieldsBad = !$bridge->available() || $problems !== [];
         $editing   = isset($_GET[self::CONNECTION_PARAM]);
-        echo self::tabNav($fieldsBad, $editing);
-
+        echo '<div class="card mb-3"><div class="card-header">' . self::tabNav($fieldsBad, $editing) . '</div><div class="card-body">';
         echo '<div class="tab-content">';
         echo '<div class="tab-pane active show" id="backupinfo-tab-connections" role="tabpanel">';
         self::connections();
@@ -203,7 +202,6 @@ class SuiteConfig
         // One settings form across the other tabs: Save on any tab saves them all.
         echo '<form method="post" action="' . htmlescape($action) . '">';
         echo '<div class="tab-pane" id="backupinfo-tab-policy" role="tabpanel">';
-        echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __s('Backup policy', 'backupinfo') . '</h3></div><div class="card-body">';
 
         // A backup is "expired" when older than its job's schedule interval (read from the
         // backup system) plus the grace; the RPO below applies when the schedule is unknown.
@@ -245,7 +243,6 @@ class SuiteConfig
         ]);
         echo '<div class="form-hint">' . __s('Computers outside your active entities are kept as they are.', 'backupinfo') . '</div>';
         echo '</div>';
-        echo '</div></div>';
         self::saveButtons($canedit, false);
         echo '</div>';
 
@@ -258,7 +255,6 @@ class SuiteConfig
             }
             echo '</ul></div>';
         }
-        echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __s('Fields mapping (Computer)', 'backupinfo') . '</h3></div><div class="card-body">';
         [$options, $savedContainer, $containerId] = self::containerChoices(
             $bridge->containerOptions(),
             trim((string) ($cfg['fields_container'] ?? ''))
@@ -286,7 +282,6 @@ class SuiteConfig
             Dropdown::showFromArray($key, $options, ['value' => $saved, 'width' => '100%', 'readonly' => !$canedit]);
             echo '</div>';
         }
-        echo '</div></div>';
         self::saveButtons($canedit, false);
         echo '</div>';
 
@@ -295,7 +290,8 @@ class SuiteConfig
         self::saveButtons($canedit, true);
         echo '</div>';
         Html::closeForm();
-        echo '</div>';
+        echo '</div>'; // tab-content
+        echo '</div></div>'; // card-body, card
         echo self::tabScript($editing);
     }
 
@@ -308,7 +304,7 @@ class SuiteConfig
             'fields'      => ['ti-forms', __('Fields mapping', 'backupinfo')],
             'tickets'     => ['ti-ticket', __('Tickets and findings', 'backupinfo')],
         ];
-        $html = '<ul class="nav nav-tabs mb-3" id="backupinfo-tabs" role="tablist">';
+        $html = '<ul class="nav nav-tabs card-header-tabs" id="backupinfo-tabs" role="tablist">';
         foreach ($tabs as $key => [$icon, $label]) {
             $active = $key === 'connections'; // shown without JavaScript too
             $html  .= '<li class="nav-item" role="presentation"><button type="button" class="nav-link' . ($active ? ' active' : '') . '" data-bs-toggle="tab"'
@@ -350,13 +346,11 @@ class SuiteConfig
         global $DB;
 
         $types = Registry::types();
-        echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __s('Connections', 'backupinfo') . '</h3>';
         if (Session::haveRight(RightDefinition::CONFIG, CREATE)) {
-            echo '<div class="card-actions"><a class="btn btn-sm btn-outline-secondary" href="' . htmlescape(self::connectionLink(0)) . '"><i class="ti ti-plus me-1"></i>'
+            echo '<div class="d-flex justify-content-end mb-2"><a class="btn btn-sm btn-outline-secondary" href="' . htmlescape(self::connectionLink(0)) . '"><i class="ti ti-plus me-1"></i>'
                 . __s('Add a connection', 'backupinfo') . '</a></div>';
         }
-        echo '</div>';
-        echo '<div class="card-body p-0"><table class="tab_cadre_fixehov"><tr class="noHover">'
+        echo '<div class="table-responsive mb-3"><table class="tab_cadre_fixehov"><tr class="noHover">'
             . '<th>' . __s('Name') . '</th><th>' . __s('Type') . '</th><th>' . __s('Active') . '</th>'
             . '<th>' . __s('Last sync', 'backupinfo') . '</th><th>' . __s('Result', 'backupinfo') . '</th></tr>';
         $any = false;
@@ -375,7 +369,7 @@ class SuiteConfig
         if (!$any) {
             echo '<tr class="tab_bg_1"><td colspan="5">' . __s('No connection yet.', 'backupinfo') . '</td></tr>';
         }
-        echo '</table></div></div>';
+        echo '</table></div>';
 
         // The connection form lives here, in Setup (user, 2026-11-02); it posts to
         // front/connection.form.php, which returns to this section.
@@ -385,12 +379,12 @@ class SuiteConfig
             $conn = new Connection();
             $ok   = $id > 0 ? $conn->can($id, READ) : Session::haveRight(RightDefinition::CONFIG, CREATE);
             if ($ok) {
-                echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">'
-                    . ($id > 0 ? __s('Edit connection', 'backupinfo') : __s('New connection', 'backupinfo')) . '</h3>'
-                    . '<div class="card-actions"><a class="btn btn-sm btn-ghost-secondary" href="' . htmlescape(self::connectionLink(null)) . '">'
-                    . __s('Close') . '</a></div></div><div class="card-body">';
+                echo '<div class="border rounded p-3 mb-3"><div class="d-flex justify-content-between align-items-center mb-2"><h4 class="m-0">'
+                    . ($id > 0 ? __s('Edit connection', 'backupinfo') : __s('New connection', 'backupinfo')) . '</h4>'
+                    . '<a class="btn btn-sm btn-ghost-secondary" href="' . htmlescape(self::connectionLink(null)) . '">'
+                    . __s('Close') . '</a></div>';
                 $conn->showForm($id);
-                echo '</div></div>';
+                echo '</div>';
             }
         }
     }
@@ -433,7 +427,6 @@ class SuiteConfig
     private static function ticketsCard(bool $canedit): void
     {
         $cfg = Config::getConfigurationValues(self::CONTEXT, ['tickets_enabled', 'tickets_since', 'ticket_template', 'problem_template', 'problem_count', 'problem_days', 'findings_enabled', 'followup_on_success']);
-        echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __s('Tickets and findings', 'backupinfo') . '</h3></div><div class="card-body">';
         foreach ([
             'tickets_enabled'  => __('Open an Incident for each failed backup of a computer that must be backed up, and a Problem for repeated failures', 'backupinfo'),
             'followup_on_success' => __('Add one follow-up "Backup succeeded again" to the open Incident when a later backup of that computer succeeds (the Incident is not closed)', 'backupinfo'),
@@ -455,7 +448,6 @@ class SuiteConfig
         echo '<input type="number" min="1" max="50" class="form-control" id="backupinfo-pcount" name="problem_count" value="' . (int) ($cfg['problem_count'] ?? 3) . '"' . ($canedit ? '' : ' disabled') . '></div>';
         echo '<div class="col-md-6 mb-3"><label class="form-label" for="backupinfo-pdays">' . __s('Within (days)', 'backupinfo') . '</label>';
         echo '<input type="number" min="1" max="365" class="form-control" id="backupinfo-pdays" name="problem_days" value="' . (int) ($cfg['problem_days'] ?? 30) . '"' . ($canedit ? '' : ' disabled') . '></div></div>';
-        echo '</div></div>';
     }
 
 }
