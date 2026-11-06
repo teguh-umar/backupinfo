@@ -200,7 +200,11 @@ class SuiteConfig
         echo '</div>';
 
         // One settings form across the other tabs: Save on any tab saves them all.
+        // Bootstrap hides only direct children of .tab-content: close the Connections one and give the
+        // settings form its own (a form cannot hold the connection editor's form).
+        echo '</div>'; // tab-content (Connections)
         echo '<form method="post" action="' . htmlescape($action) . '">';
+        echo '<div class="tab-content">';
         echo '<div class="tab-pane" id="backupinfo-tab-policy" role="tabpanel">';
 
         // A backup is "expired" when older than its job's schedule interval (read from the
@@ -289,8 +293,8 @@ class SuiteConfig
         self::ticketsCard($canedit);
         self::saveButtons($canedit, true);
         echo '</div>';
+        echo '</div>'; // tab-content (settings)
         Html::closeForm();
-        echo '</div>'; // tab-content
         echo '</div></div>'; // card-body, card
         echo self::tabScript($editing);
     }

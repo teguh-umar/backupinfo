@@ -244,4 +244,10 @@ check('setup tabs: Fields marked when the sync cannot write Fields', str_contain
 $sc = $read('src/SuiteConfig.php');
 check('setup tabs: connection editor outside the settings form (no nested form), Save on each settings tab', strpos($sc, 'self::connections();') < strpos($sc, '// One settings form across the other tabs') && substr_count($sc, 'self::saveButtons(') === 3);
 
+$form = strpos($sc, "// One settings form across the other tabs");
+$tail = substr($sc, (int) $form, 900);
+check('setup tabs: every pane a direct child of a .tab-content (Bootstrap hides only those), the form has its own',
+    $form !== false && preg_match_all('/tab-content/', $tail) >= 2 && strpos($tail, '<form method') < strpos($tail, "'<div class=\"tab-content\">'")
+    && strpos($tail, "'<div class=\"tab-content\">'") < strpos($tail, 'id="backupinfo-tab-policy"'));
+
 done();
