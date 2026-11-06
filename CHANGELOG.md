@@ -1,5 +1,16 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.4.0-rc5 — 2026-11-06 (release candidate)
+
+- **Backup objects: the backup results that exist, for auditors.**
+  - New columns: Restore points, Size, Last run, and Result (green success, red failed, yellow
+    other), with the failure reason on hover.
+  - Last run is the newest backup run the sync stored for that object (same connection and VM name).
+    No call to the backup system.
+  - The list uses the same GLPI table: filter row, sort, pages, and the Columns menu. The buttons
+    Needs review, Pinned, Matched and All stay as they were.
+- Audit evidence and Backup objects share one table script (filter row, Columns menu).
+
 ## 0.4.0-rc4 — 2026-11-06 (release candidate)
 
 - **Audit evidence: filters, sort, pages and a column choice on every tab.**
@@ -10,13 +21,7 @@
     "(12 of 131)" while a filter is on.
   - **Columns** hides or shows columns. The choice is kept per tab in the browser.
   - The Excel and CSV exports are unchanged: always every row and every column.
-- **Backup objects: the backup results that exist, for auditors.**
-  - New columns: Restore points, Size, Last run, and Result (green success, red failed, yellow
-    other), with the failure reason on hover.
-  - Last run is the newest backup run the sync stored for that object (same connection and VM name).
-    No call to the backup system.
-  - The list uses the same GLPI table: filter row, sort, pages, and the Columns menu. The buttons
-    Needs review, Pinned, Matched and All stay as they were.
+
 ## 0.4.0-rc3 — 2026-11-06 (release candidate)
 
 - **Optional follow-up "Backup succeeded again"**, off by default. When a later backup of the same
