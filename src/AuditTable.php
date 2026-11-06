@@ -142,18 +142,26 @@ final class AuditTable
      * order, start, glpilist_limit). The pager, sort links and filter row call reloadTab(), which the
      * audit page defines for its own sections.
      *
+     * Filters and sort always read the plain cell values. $options may add:
+     * - html: callable(list<scalar|null> $row): array<int, string>, already escaped HTML shown instead of
+     *   the plain value for those column indexes (links, badges, forms);
+     * - fixed: list<int> column indexes with no filter and no sort (e.g. an action column).
+     *
      * @param array{columns: list<string>, rows: list<list<scalar|null>>} $section
      * @param array<string, mixed> $get
+     * @param array{html?: callable, fixed?: list<int>} $options
      * @return array<string, mixed>
      */
-    public static function view(string $id, array $section, array $get, int $defaultLimit): array
+    public static function view(string $id, array $section, array $get, int $defaultLimit, array $options = []): array
     {
+        $fixed = array_flip($options['fixed'] ?? []);
+        $html  = $options['html'] ?? null;
         $keys    = self::keys($section['columns']);
-        $choices = self::choices($section['columns'], $section['rows']);
-        $filters = self::cleanFilters($get['filters'] ?? null, $keys, $choices);
+        $choices = array_diff_key(self::choices($section['columns'], $section['rows']), array_flip(array_map(static fn(int $i): string => 'c' . $i, array_keys($fixed))));
+        $filters = self::cleanFilters($get['filters'] ?? null, array_diff_key($keys, array_flip(array_map(static fn(int $i): string => 'c' . $i, array_keys($fixed)))), $choices);
         $rows    = self::apply($section['rows'], $filters);
 
-        $sort  = is_string($get['sort'] ?? null) && isset($keys[$get['sort']]) ? $get['sort'] : null;
+        $sort  = is_string($get['sort'] ?? null) && isset($keys[$get['sort']]) && !isset($fixed[(int) substr($get['sort'], 1)]) ? $get['sort'] : null;
         $order = strtoupper((string) ($get['order'] ?? '')) === 'DESC' ? 'DESC' : 'ASC';
         if ($sort !== null) {
             $rows = self::sort($rows, (int) substr($sort, 1), $order === 'DESC');
@@ -166,20 +174,53 @@ final class AuditTable
             $start = 0;
         }
 
-        $entries = [];
+        $entries  = [];
+        $htmlCols = [];
         foreach (array_slice($rows, $start, $limit) as $row) {
+            $shown = $html !== null ? $html($row) : [];
             $entry = [];
             foreach (array_keys($keys) as $i => $key) {
-                $entry[$key] = (string) ($row[$i] ?? '');
+                if (array_key_exists($i, $shown)) {
+                    $entry[$key]    = (string) $shown[$i];
+                    $htmlCols[$key] = true;
+                } else {
+                    $entry[$key] = (string) ($row[$i] ?? '');
+                }
             }
-            $entries[] = $entry;
+            $entries[] = $entry + ['_html' => array_keys($shown)];
+        }
+        // In a column shown as HTML, the cells without HTML are still plain text: escape them.
+        foreach ($entries as $n => $entry) {
+            foreach (array_keys($htmlCols) as $key) {
+                if (!in_array((int) substr($key, 1), $entry['_html'], true)) {
+                    $entries[$n][$key] = htmlspecialchars($entry[$key], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                }
+            }
+            unset($entries[$n]['_html']);
+        }
+
+        // A column shown as HTML keeps its choice filter through filter_formatter.
+        $columns    = [];
+        $formatters = array_map(static fn(): string => 'array', $choices);
+        foreach ($keys as $key => $label) {
+            $i = (int) substr($key, 1);
+            if (isset($fixed[$i])) {
+                $columns[$key] = ['label' => $label, 'no_filter' => true, 'nosort' => true];
+            } elseif (isset($htmlCols[$key])) {
+                $columns[$key] = ['label' => $label] + (isset($choices[$key]) ? ['filter_formatter' => 'array'] : []);
+            } else {
+                $columns[$key] = $label;
+            }
+            if (isset($htmlCols[$key])) {
+                $formatters[$key] = 'raw_html';
+            }
         }
 
         return [
             'datatable_id'      => $id,
             'is_tab'            => true,
-            'columns'           => $keys,
-            'formatters'        => array_map(static fn(): string => 'array', $choices),
+            'columns'           => $columns,
+            'formatters'        => $formatters,
             'columns_values'    => $choices,
             'entries'           => $entries,
             'filters'           => $filters,

@@ -6,7 +6,12 @@
  * Pin/unpin need config UPDATE (CSRF is checked by the GLPI 11 kernel).
  */
 
+use Glpi\Application\View\TemplateRenderer;
+use Glpi\DBAL\QueryFunction;
+use GlpiPlugin\Backupinfo\AuditTable;
 use GlpiPlugin\Backupinfo\Cron;
+use GlpiPlugin\Backupinfo\ObjectsView;
+use GlpiPlugin\Backupinfo\TableUi;
 use GlpiPlugin\Backupinfo\RightDefinition;
 use GlpiPlugin\Backupinfo\Source\Registry;
 
@@ -89,8 +94,6 @@ $states = [
     'all'       => [__('All', 'backupinfo'), null],
 ];
 $state = is_string($_GET['state'] ?? null) && isset($states[$_GET['state']]) ? $_GET['state'] : 'attention';
-$start = max(0, (int) ($_GET['start'] ?? 0));
-$limit = 50;
 
 // Visibility: the Computer's entity, or (no Computer) config READ.
 $entity  = getEntitiesRestrictCriteria('glpi_computers');
@@ -101,7 +104,8 @@ $where   = [$visible];
 if ($states[$state][1] !== null) {
     $where[$table . '.match_state'] = $states[$state][1];
 }
-$criteria = [
+$objects = [];
+foreach ($DB->request([
     'SELECT'    => [$table . '.*', 'glpi_computers.name AS computer_name', 'glpi_plugin_backupinfo_connections.name AS connection_name', 'glpi_plugin_backupinfo_connections.type AS connection_type'],
     'FROM'      => $table,
     'LEFT JOIN' => [
@@ -116,17 +120,93 @@ $criteria = [
         ]],
     ],
     'WHERE'     => $where,
+    'ORDER'     => [$table . '.name'],
+]) as $row) {
+    $objects[] = $row;
+}
+
+// Newest stored run per connection and VM name: the newest start first, then its rows.
+$lastTimes = [];
+$connIds   = array_values(array_unique(array_map(static fn(array $o): int => (int) $o['connections_id'], $objects)));
+if ($connIds !== []) {
+    foreach ($DB->request([
+        'SELECT'     => ['r.connections_id', 'i.vm_name', QueryFunction::max('r.start_time', 'last')],
+        'FROM'       => 'glpi_plugin_backupinfo_runs_items AS i',
+        'INNER JOIN' => ['glpi_plugin_backupinfo_runs AS r' => ['ON' => ['i' => 'runs_id', 'r' => 'id']]],
+        'WHERE'      => ['r.connections_id' => $connIds],
+        'GROUPBY'    => ['r.connections_id', 'i.vm_name'],
+    ]) as $row) {
+        if (!empty($row['last'])) {
+            $lastTimes[(string) $row['last']] = true;
+        }
+    }
+}
+$runRows = [];
+foreach (array_chunk(array_keys($lastTimes), 500) as $chunk) {
+    foreach ($DB->request([
+        'SELECT'     => ['r.connections_id', 'i.vm_name', 'r.start_time', 'r.finish_time', 'r.status', 'i.item_status', 'r.reason'],
+        'FROM'       => 'glpi_plugin_backupinfo_runs_items AS i',
+        'INNER JOIN' => ['glpi_plugin_backupinfo_runs AS r' => ['ON' => ['i' => 'runs_id', 'r' => 'id']]],
+        'WHERE'      => ['r.connections_id' => $connIds, 'r.start_time' => $chunk],
+    ]) as $row) {
+        $runRows[] = $row;
+    }
+}
+$last = ObjectsView::lastRuns($runRows);
+
+$labels = [
+    'matched'   => __('Matched', 'backupinfo'),
+    'manual'    => __('Pinned by hand', 'backupinfo'),
+    'review'    => __('Needs review (several computers)', 'backupinfo'),
+    'unmatched' => __('Not found', 'backupinfo'),
 ];
-$total = count($DB->request($criteria));
-$rows  = $DB->request($criteria + ['ORDER' => [$table . '.name'], 'START' => $start, 'LIMIT' => $limit]);
+$meta = []; // object id => what the HTML cells need
+foreach ($objects as $o) {
+    $run = $last[(int) $o['connections_id'] . '|' . mb_strtolower(trim((string) $o['name']))] ?? null;
+    $meta[(int) $o['id']] = ['cid' => (int) $o['items_id'], 'match' => (string) $o['match_state'], 'reason' => $run === null ? '' : (string) ($run['reason'] ?? '')];
+}
+$columns = ObjectsView::COLUMNS;
+if (!$canPin) {
+    $columns[ObjectsView::COL_ACTION] = 'ID';
+}
+$page = Html::getPrefixedUrl('/plugins/backupinfo/front/objects.php');
+$view = AuditTable::view('backupinfo-objects', ['columns' => $columns, 'rows' => ObjectsView::rows($objects, $last, Registry::types(), $labels)], $_GET,
+    (int) ($_SESSION['glpilist_limit'] ?? 15), [
+        'fixed' => [ObjectsView::COL_ACTION],
+        'html'  => static function (array $row) use ($meta, $canPin, $page): array {
+            $id  = (int) $row[ObjectsView::COL_ACTION];
+            $m   = $meta[$id] ?? ['cid' => 0, 'match' => '', 'reason' => ''];
+            $out = [];
+            $res = (string) $row[ObjectsView::COL_RESULT];
+            if ($res !== '') {
+                $out[ObjectsView::COL_RESULT] = '<span class="badge ' . ObjectsView::badge($res) . '"'
+                    . ($m['reason'] !== '' && $res !== 'success' ? ' title="' . htmlescape($m['reason']) . '" data-bs-toggle="tooltip"' : '') . '>' . htmlescape($res) . '</span>';
+            }
+            if ($m['cid'] > 0) {
+                $out[ObjectsView::COL_COMPUTER] = '<a href="' . htmlescape(Computer::getFormURLWithID($m['cid'])) . '">' . htmlescape((string) $row[ObjectsView::COL_COMPUTER]) . '</a>';
+            }
+            if (!$canPin) {
+                return $out;
+            }
+            $form = '<form method="post" action="' . htmlescape($page) . '" class="d-flex gap-2 align-items-center">' . Html::hidden('id', ['value' => $id]);
+            if ($m['match'] === 'manual') {
+                $form .= Html::submit(__('Unpin', 'backupinfo'), ['name' => 'unpin', 'class' => 'btn btn-sm btn-outline-secondary']);
+            } else {
+                $form .= Computer::dropdown(['name' => 'items_id', 'value' => $m['cid'], 'width' => '16rem', 'rand' => 'bi' . $id, 'display' => false]);
+                $form .= Html::submit(__('Pin', 'backupinfo'), ['name' => 'pin', 'class' => 'btn btn-sm btn-primary']);
+            }
+            $out[ObjectsView::COL_ACTION] = $form . Html::closeForm(false);
+            return $out;
+        },
+    ]);
 
 Html::header(__('Backup objects', 'backupinfo'), '', \GlpiPlugin\Pgnsuite\Menu::SECTOR, 'backupinfo', 'objects');
 \GlpiPlugin\Pgnsuite\Menu::renderSubNav('backupinfo', 'objects');
 
-$page = Html::getPrefixedUrl('/plugins/backupinfo/front/objects.php');
+echo '<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">';
 // Bordered button group, not .nav-pills: pills have no borders and their active tint is
 // unreadable on GLPI's default palette (same finding as the shared ConfigTab sub-nav).
-echo '<div class="btn-group mb-3" role="group" aria-label="' . __s('Filter', 'backupinfo') . '">';
+echo '<div class="btn-group" role="group" aria-label="' . __s('Filter', 'backupinfo') . '">';
 foreach ($states as $key => [$label]) {
     $active = $key === $state;
     echo '<a class="btn btn-outline-secondary' . ($active ? ' active' : '') . '"'
@@ -134,62 +214,34 @@ foreach ($states as $key => [$label]) {
         . ' href="' . htmlescape($page . '?state=' . $key) . '">' . htmlescape($label) . '</a>';
 }
 echo '</div>';
+echo TableUi::columnsButton('backupinfo-objects-cols');
+echo '</div>';
 if (!$canConfig) {
     echo '<div class="text-muted mb-2">' . __s('Objects without a computer are shown only to Backup Info administrators.', 'backupinfo') . '</div>';
 }
+echo '<div class="text-muted mb-2">' . __s('Last run and Result: the newest backup run stored by the sync for this object (same connection and VM name), with the reason of a failure on hover.', 'backupinfo') . '</div>';
 
-$types  = Registry::types();
-$labels = [
-    'matched'   => __('Matched', 'backupinfo'),
-    'manual'    => __('Pinned by hand', 'backupinfo'),
-    'review'    => __('Needs review (several computers)', 'backupinfo'),
-    'unmatched' => __('Not found', 'backupinfo'),
-];
-echo '<table class="tab_cadre_fixehov"><tr class="noHover">'
-    . '<th>' . __s('Name') . '</th><th>' . __s('IP') . '</th><th>' . __s('Kind', 'backupinfo') . '</th><th>' . __s('Job', 'backupinfo') . '</th>'
-    . '<th>' . __s('Last backup', 'backupinfo') . '</th><th>' . __s('Source', 'backupinfo') . '</th><th>' . __s('Match', 'backupinfo') . '</th>'
-    . '<th>' . __s('Computer') . '</th>' . ($canPin ? '<th>' . __s('Action') . '</th>' : '') . '</tr>';
-$shown = 0;
-foreach ($rows as $row) {
-    $shown++;
-    $match = (string) ($row['match_state'] ?? '');
-    $cid   = (int) $row['items_id'];
-    echo '<tr class="tab_bg_1">'
-        . '<td>' . htmlescape((string) $row['name']) . '</td>'
-        . '<td>' . htmlescape((string) $row['ip']) . '</td>'
-        . '<td>' . htmlescape((string) $row['kind']) . '</td>'
-        . '<td>' . htmlescape((string) $row['job_name']) . '</td>'
-        . '<td>' . htmlescape(!empty($row['last_backup']) ? Html::convDateTime((string) $row['last_backup']) : '-') . '</td>'
-        . '<td>' . htmlescape(($types[(string) $row['connection_type']] ?? (string) $row['connection_type']) . ' · ' . (string) $row['connection_name']) . '</td>'
-        . '<td>' . htmlescape($labels[$match] ?? $match) . '</td>'
-        . '<td>' . ($cid > 0 ? '<a href="' . htmlescape(Computer::getFormURLWithID($cid)) . '">' . htmlescape((string) ($row['computer_name'] ?? ('#' . $cid))) . '</a>' : '') . '</td>';
-    if ($canPin) {
-        echo '<td><form method="post" action="' . htmlescape($page) . '" class="d-flex gap-2 align-items-center">';
-        echo Html::hidden('id', ['value' => (int) $row['id']]);
-        if ($match === 'manual') {
-            echo Html::submit(__('Unpin', 'backupinfo'), ['name' => 'unpin', 'class' => 'btn btn-sm btn-outline-secondary']);
-        } else {
-            Computer::dropdown(['name' => 'items_id', 'value' => $cid, 'width' => '16rem', 'rand' => 'bi' . (int) $row['id']]);
-            echo Html::submit(__('Pin', 'backupinfo'), ['name' => 'pin', 'class' => 'btn btn-sm btn-primary']);
-        }
-        Html::closeForm();
-        echo '</td>';
-    }
-    echo '</tr>';
-}
-if ($shown === 0) {
-    echo '<tr class="tab_bg_1"><td colspan="' . ($canPin ? 9 : 8) . '">' . __s('None.', 'backupinfo') . '</td></tr>';
-}
-echo '</table>';
-
-echo '<div class="d-flex gap-3 align-items-center mt-2">';
-echo '<span>' . htmlescape(sprintf(__('%1$d-%2$d of %3$d', 'backupinfo'), $total === 0 ? 0 : $start + 1, $start + $shown, $total)) . '</span>';
-if ($start > 0) {
-    echo '<a href="' . htmlescape($page . '?state=' . $state . '&start=' . max(0, $start - $limit)) . '">' . __s('Previous') . '</a>';
-}
-if ($start + $limit < $total) {
-    echo '<a href="' . htmlescape($page . '?state=' . $state . '&start=' . ($start + $limit)) . '">' . __s('Next') . '</a>';
-}
+echo '<div id="backupinfo-objects">';
+echo TemplateRenderer::getInstance()->render('components/datatable.html.twig', $view);
 echo '</div>';
+
+// GLPI's table calls reloadTab() for sort, pages, page size and filters: here it reloads the page
+// with the next state in the URL (the state buttons start a fresh list).
+$js = static fn(mixed $v): string => json_encode($v, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+echo Html::scriptBlock(TableUi::script());
+echo Html::scriptBlock('(() => {
+    const T = window.backupinfoTable, root = document.getElementById("backupinfo-objects");
+    const store = "backupinfo.objects.cols";
+    const url = new URLSearchParams(window.location.search), f = new URLSearchParams();
+    url.forEach((v, k) => { if (k.startsWith("filters[")) { f.append(k, v); } });
+    const st = {filters: f.toString(), sort: url.get("sort") || "", order: url.get("order") || "ASC", start: parseInt(url.get("start") || "0", 10) || 0, limit: url.get("glpilist_limit") || ""};
+    window.reloadTab = (add) => {
+        window.location.href = ' . $js($page . '?state=' . $state) . ' + "&" + T.query(T.step(st, add));
+    };
+    T.bindFilters($(root), (add) => window.reloadTab(add));
+    if (st.limit) { $(root).find("select[name=list_limit]").val(st.limit); }
+    T.colMenu(store, root, document.getElementById("backupinfo-objects-cols"), ' . $js(__('Show all columns', 'backupinfo')) . ');
+    T.applyCols(store, root);
+})();');
 
 Html::footer();

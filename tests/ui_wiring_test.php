@@ -160,7 +160,7 @@ check('objects.php: unpin stores unmatched', str_contains($obj, "'match_state' =
 check('objects.php: pin checks the Computer is visible', str_contains($obj, '->can($cid, READ)'));
 check('objects.php: entity restriction', str_contains($obj, "getEntitiesRestrictCriteria('glpi_computers')"));
 check('objects.php: unmatched rows only with config READ', str_contains($obj, '$canConfig = Session::haveRight(RightDefinition::CONFIG, READ);'));
-check('objects.php: forms closed with Html::closeForm', str_contains($obj, 'Html::closeForm()'));
+check('objects.php: forms closed with Html::closeForm', str_contains($obj, 'Html::closeForm(false)'));
 
 $cov = $read('front/coverage.php');
 check('coverage.php: entity restriction', str_contains($cov, "getEntitiesRestrictCriteria('glpi_computers')"));
@@ -225,7 +225,7 @@ check('Menu: options keyed coverage/objects/probe', str_contains($menu, "\$optio
 check('Menu: each option behind its right', str_contains($menu, 'Session::haveRight(RightDefinition::REPORT, READ)')
     && str_contains($menu, 'Session::haveRight(RightDefinition::VIEW, READ)')
     && str_contains($menu, 'Session::haveRight(RightDefinition::CONFIG, UPDATE)'));
-check('objects filter is a bordered button group, not nav-pills', str_contains($obj, '<div class="btn-group mb-3" role="group"') && !str_contains($obj, '<ul class="nav nav-pills'));
+check('objects filter is a bordered button group, not nav-pills', str_contains($obj, '<div class="btn-group" role="group"') && !str_contains($obj, '<ul class="nav nav-pills'));
 check('src/Api removed', !is_dir(BI_ROOT . '/src/Api'));
 
 // --- 0.4.0 tickets settings

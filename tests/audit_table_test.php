@@ -46,13 +46,32 @@ $v = AuditTable::view('dt-x', $section, ['start' => '38', 'glpilist_limit' => '5
 check('view: start and page size from the request; unknown sort ignored', $v['start'] === 38 && count($v['entries']) === 2 && $v['sort'] === null);
 check('view: start past the end -> first page', AuditTable::view('dt-x', $section, ['start' => '999'], 15)['start'] === 0);
 
+// HTML cells (links, badges, forms) and a fixed action column; filters and sort still read plain values.
+$hcols = ['Name', 'Result', 'Action'];
+$hrows = [['vm-a', 'failed', '7'], ['vm-b', 'success', '8'], ['<b>x</b>', 'failed', '9']];
+$hv = AuditTable::view('dt-h', ['columns' => $hcols, 'rows' => $hrows], ['filters' => ['c1' => ['failed'], 'c2' => '8'], 'sort' => 'c2'], 15, [
+    'fixed' => [2],
+    'html'  => static fn (array $r): array => $r[0] === '<b>x</b>' ? [2 => '<form>' . $r[2] . '</form>'] : [1 => '<span class="badge">' . $r[1] . '</span>', 2 => '<form>' . $r[2] . '</form>'],
+]);
+check('html: filter reads the plain value, fixed column ignores its filter and sort', $hv['filtered_number'] === 2 && $hv['sort'] === null);
+check('html: cells shown as given, column formatter raw_html', $hv['entries'][0]['c1'] === '<span class="badge">failed</span>' && $hv['formatters']['c1'] === 'raw_html');
+check('html: a plain cell in an HTML column is escaped', $hv['entries'][1]['c1'] === 'failed' && $hv['entries'][1]['c0'] === '<b>x</b>');
+check('html: choice filter kept through filter_formatter', ($hv['columns']['c1']['filter_formatter'] ?? '') === 'array' && $hv['formatters']['c1'] === 'raw_html');
+check('html: fixed column has no filter and no sort', $hv['columns']['c2'] === ['label' => 'Action', 'no_filter' => true, 'nosort' => true] && !isset($hv['columns_values']['c2']));
+$hv2 = AuditTable::view('dt-h', ['columns' => ['A'], 'rows' => [['<i>'], ['ok']]], [], 15, ['html' => static fn (array $r): array => $r[0] === 'ok' ? [0 => '<u>ok</u>'] : []]);
+check('html: unsafe plain text next to HTML cells is escaped', $hv2['entries'][0]['c0'] === '&lt;i&gt;' && $hv2['entries'][1]['c0'] === '<u>ok</u>');
+
+$ui = $read('src/TableUi.php');
+check('ui: shared table script (step, query, columns, filters)', str_contains($ui, 'window.backupinfoTable') && str_contains($ui, 'return {step, query, applyCols, colMenu, bindFilters};'));
+check('ui: localStorage wrapped in try', substr_count($ui, 'try { localStorage') === 1 && str_contains($ui, 'try { return new Set(JSON.parse(localStorage'));
+check('ui: Columns checkboxes stay inside the menu (no .form-check negative margin)', str_contains($ui, '"dropdown-item d-flex align-items-center gap-2"') && !str_contains($ui, 'dropdown-item form-check'));
+check('ui: filter row bound (show filters, input, change, Enter)', str_contains($ui, '".show_filters"') && str_contains($ui, '"input", ".filter_row') && str_contains($ui, '"change", ".filter_row') && str_contains($ui, 'ev.key === "Enter"'));
+
 $page = $read('front/audit.php');
 check('page: sections render GLPI\'s datatable', str_contains($page, "render('components/datatable.html.twig', \$view)") && str_contains($page, 'AuditTable::view('));
 check('page: reloadTab defined for the section on screen', str_contains($page, 'window.reloadTab = (add) =>') && str_contains($page, '.tab-pane.active'));
-check('page: filter row bound per section (show filters, input, change, Enter)', str_contains($page, '".show_filters"') && str_contains($page, '"input", ".filter_row') && str_contains($page, '"change", ".filter_row') && str_contains($page, 'ev.key === "Enter"'));
-check('page: Columns menu kept per section in this browser', str_contains($page, '"backupinfo.audit.cols." + key') && str_contains($page, 'id="backupinfo-audit-cols-'));
-check('page: Columns checkboxes stay inside the menu (no .form-check negative margin)', str_contains($page, '"dropdown-item d-flex align-items-center gap-2"') && !str_contains($page, 'dropdown-item form-check'));
-check('page: localStorage wrapped in try', substr_count($page, 'try { localStorage') === 1 && str_contains($page, 'try { return new Set(JSON.parse(localStorage'));
+check('page: filter row bound per section', str_contains($page, 'T.bindFilters($("#backupinfo-audit-body-" + key)') && str_contains($page, 'TableUi::script()'));
+check('page: Columns menu kept per section in this browser', str_contains($page, '"backupinfo.audit.cols." + key') && str_contains($page, "TableUi::columnsButton('backupinfo-audit-cols-' . \$key)"));
 check('page: no 500-row screen cap any more', !str_contains($page, '$maxRows'));
 // Exports stay complete (user, 2026-11-06): they never read the screen filters.
 $exportPart = substr($page, 0, (int) strpos($page, "isset(\$_GET['section'])"));
