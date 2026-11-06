@@ -237,4 +237,11 @@ check('tickets: switching on stores the start time', SuiteConfig::withTicketsSin
 check('tickets: saving while on keeps the start time', !isset(SuiteConfig::withTicketsSince(['tickets_enabled' => 1], true, $now)['tickets_since']));
 check('tickets: off stays off, no start time', !isset(SuiteConfig::withTicketsSince(['tickets_enabled' => 0], false, $now)['tickets_since']));
 
+// --- Setup tabs (0.4.0-rc3)
+$nav = SuiteConfig::tabNav(true, false);
+check('setup tabs: four tabs in order, Connections shown first', preg_match_all('/data-tab="([a-z]+)"/', $nav, $m) === 4 && $m[1] === ['connections', 'policy', 'fields', 'tickets'] && substr_count($nav, 'nav-link active') === 1);
+check('setup tabs: Fields marked when the sync cannot write Fields', str_contains($nav, 'ti-alert-triangle') && !str_contains(SuiteConfig::tabNav(false, false), 'ti-alert-triangle'));
+$sc = $read('src/SuiteConfig.php');
+check('setup tabs: connection editor outside the settings form (no nested form), Save on each settings tab', strpos($sc, 'self::connections();') < strpos($sc, '// One settings form across the other tabs') && substr_count($sc, 'self::saveButtons(') === 3);
+
 done();

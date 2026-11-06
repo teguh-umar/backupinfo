@@ -184,19 +184,25 @@ class SuiteConfig
         $cfg     = Config::getConfigurationValues(self::CONTEXT, array_merge(['rpo_hours', 'rpo_grace_hours', 'policy_mode', 'restore_interval_months', 'run_keep_months', 'own_ips'], self::FIELD_KEYS));
         $bridge  = FieldsBridge::fromConfig();
 
+        $problems  = $bridge->problems();
+        $fieldsBad = !$bridge->available() || $problems !== [];
+        $editing   = isset($_GET[self::CONNECTION_PARAM]);
+        echo self::tabNav($fieldsBad, $editing);
+
+        echo '<div class="tab-content">';
+        echo '<div class="tab-pane active show" id="backupinfo-tab-connections" role="tabpanel">';
         self::connections();
-
-        // Fields warnings first: they explain why Backup Status is not being written.
-        $problems = $bridge->problems();
-        if (!$bridge->available() || $problems !== []) {
-            echo '<div class="alert alert-warning"><strong>' . __s('Fields is not (fully) updated by the sync:', 'backupinfo') . '</strong><ul class="mb-0">';
-            foreach ($problems ?: [__('Fields is not available (see the backupinfo log).', 'backupinfo')] as $problem) {
-                echo '<li>' . htmlescape($problem) . '</li>';
-            }
-            echo '</ul></div>';
+        if ($canedit) {
+            echo '<form method="post" class="mb-3" action="' . htmlescape($action) . '">';
+            echo '<span class="me-2">' . __s('Run the sync of every active connection now (same as automatic action).', 'backupinfo') . '</span>';
+            echo Html::submit(__('Sync now', 'backupinfo'), ['name' => 'sync_now', 'class' => 'btn btn-outline-secondary']);
+            Html::closeForm();
         }
+        echo '</div>';
 
+        // One settings form across the other tabs: Save on any tab saves them all.
         echo '<form method="post" action="' . htmlescape($action) . '">';
+        echo '<div class="tab-pane" id="backupinfo-tab-policy" role="tabpanel">';
         echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __s('Backup policy', 'backupinfo') . '</h3></div><div class="card-body">';
 
         // A backup is "expired" when older than its job's schedule interval (read from the
@@ -240,7 +246,18 @@ class SuiteConfig
         echo '<div class="form-hint">' . __s('Computers outside your active entities are kept as they are.', 'backupinfo') . '</div>';
         echo '</div>';
         echo '</div></div>';
+        self::saveButtons($canedit, false);
+        echo '</div>';
 
+        echo '<div class="tab-pane" id="backupinfo-tab-fields" role="tabpanel">';
+        // Fields warnings first: they explain why Backup Status is not being written.
+        if ($fieldsBad) {
+            echo '<div class="alert alert-warning"><strong>' . __s('Fields is not (fully) updated by the sync:', 'backupinfo') . '</strong><ul class="mb-0">';
+            foreach ($problems ?: [__('Fields is not available (see the backupinfo log).', 'backupinfo')] as $problem) {
+                echo '<li>' . htmlescape($problem) . '</li>';
+            }
+            echo '</ul></div>';
+        }
         echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __s('Fields mapping (Computer)', 'backupinfo') . '</h3></div><div class="card-body">';
         [$options, $savedContainer, $containerId] = self::containerChoices(
             $bridge->containerOptions(),
@@ -270,21 +287,61 @@ class SuiteConfig
             echo '</div>';
         }
         echo '</div></div>';
+        self::saveButtons($canedit, false);
+        echo '</div>';
 
+        echo '<div class="tab-pane" id="backupinfo-tab-tickets" role="tabpanel">';
         self::ticketsCard($canedit);
+        self::saveButtons($canedit, true);
+        echo '</div>';
+        Html::closeForm();
+        echo '</div>';
+        echo self::tabScript($editing);
+    }
 
-        if ($canedit) {
-            echo Html::submit(_sx('button', 'Save'), ['name' => 'update', 'class' => 'btn btn-primary']);
+    /** Pure: the tab bar. Fields gets a warning mark when the sync cannot write Fields. */
+    public static function tabNav(bool $fieldsWarning, bool $editingConnection): string
+    {
+        $tabs = [
+            'connections' => ['ti-plug-connected', __('Connections', 'backupinfo')],
+            'policy'      => ['ti-shield-check', __('Backup policy', 'backupinfo')],
+            'fields'      => ['ti-forms', __('Fields mapping', 'backupinfo')],
+            'tickets'     => ['ti-ticket', __('Tickets and findings', 'backupinfo')],
+        ];
+        $html = '<ul class="nav nav-tabs mb-3" id="backupinfo-tabs" role="tablist">';
+        foreach ($tabs as $key => [$icon, $label]) {
+            $active = $key === 'connections'; // shown without JavaScript too
+            $html  .= '<li class="nav-item" role="presentation"><button type="button" class="nav-link' . ($active ? ' active' : '') . '" data-bs-toggle="tab"'
+                . ' data-bs-target="#backupinfo-tab-' . $key . '" data-tab="' . $key . '" role="tab"><i class="ti ' . $icon . ' me-1"></i>' . htmlescape($label)
+                . ($key === 'fields' && $fieldsWarning ? ' <i class="ti ti-alert-triangle text-warning ms-1" title="' . __s('Fields is not (fully) updated by the sync', 'backupinfo') . '"></i>' : '')
+                . '</button></li>';
+        }
+        return $html . '</ul>';
+    }
+
+    private static function saveButtons(bool $canedit, bool $dryRun): void
+    {
+        if (!$canedit) {
+            return;
+        }
+        echo '<div class="mb-3">' . Html::submit(_sx('button', 'Save'), ['name' => 'update', 'class' => 'btn btn-primary']);
+        if ($dryRun) {
             echo ' ' . Html::submit(__('What would be created now', 'backupinfo'), ['name' => 'dryrun_tickets', 'class' => 'btn btn-outline-secondary']);
         }
-        Html::closeForm();
+        echo '</div>';
+    }
 
-        if ($canedit) {
-            echo '<form method="post" class="mt-3" action="' . htmlescape($action) . '">';
-            echo '<span class="me-2">' . __s('Run the sync of every active connection now (same as automatic action).', 'backupinfo') . '</span>';
-            echo Html::submit(__('Sync now', 'backupinfo'), ['name' => 'sync_now', 'class' => 'btn btn-outline-secondary']);
-            Html::closeForm();
-        }
+    /** Opens the tab used last (kept per browser), Connections the first time or while editing one. */
+    private static function tabScript(bool $editingConnection): string
+    {
+        return '<script>(function () {'
+            . 'var key = "backupinfo.setup.tab", nav = document.getElementById("backupinfo-tabs"); if (!nav) { return; }'
+            . 'var want = ' . ($editingConnection ? '"connections"' : 'null') . ';'
+            . 'if (!want) { try { want = localStorage.getItem(key); } catch (e) {} }'
+            . 'var btn = nav.querySelector("[data-tab=\"" + (want || "connections") + "\"]") || nav.querySelector("[data-tab]");'
+            . 'if (btn && window.bootstrap) { bootstrap.Tab.getOrCreateInstance(btn).show(); }'
+            . 'nav.addEventListener("shown.bs.tab", function (ev) { try { localStorage.setItem(key, ev.target.getAttribute("data-tab")); } catch (e) {} });'
+            . '})();</script>';
     }
 
     /** Connections: list, add and edit, all inside this section (the form posts to front/connection.form.php). */

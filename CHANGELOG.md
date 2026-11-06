@@ -8,6 +8,10 @@
   - The Incident is not solved or closed; the technician decides.
   - The dry run counts them.
 - Setup: the "Sync now" text no longer says "hourly"; the interval is the automatic action's own.
+- **Setup page in tabs:** Connections, Backup policy, Fields mapping, Tickets and findings.
+  - The Fields tab shows a warning mark when the sync cannot write Fields.
+  - Save on any settings tab saves them all.
+  - The browser remembers the last tab, so it opens again after Save.
 
 ## 0.4.0-rc2 — 2026-11-05 (release candidate)
 
