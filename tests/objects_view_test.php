@@ -24,12 +24,16 @@ $objects = [
     ['id' => 6, 'connections_id' => 1, 'name' => 'VM-NEW', 'ip' => '', 'kind' => 'vm', 'job_name' => '', 'last_backup' => null, 'restore_points' => 0, 'data_size' => '',
         'match_state' => 'unmatched', 'items_id' => 0, 'computer_name' => null, 'connection_name' => 'Main', 'connection_type' => 'vinchin'],
 ];
-$rows = ObjectsView::rows($objects, $last, ['vinchin' => 'Vinchin'], ['matched' => 'Matched', 'unmatched' => 'Not found']);
+$rows = ObjectsView::rows($objects, $last, [11 => ['date' => '2026-10-20', 'result' => 'pass']], ['vinchin' => 'Vinchin'], ['matched' => 'Matched', 'unmatched' => 'Not found']);
 check('rows: one per object, in the page columns', count($rows) === 2 && count($rows[0]) === count(ObjectsView::COLUMNS));
-check('rows: matched object shows its stored facts and newest run', $rows[0] === ['VM-A', '', 'vm', 'JOB-1', '2026-10-30 01:10:00', '7', '12 GB', '2026-10-31 01:00:00', 'failed', 'Vinchin · Main', 'Matched', 'SRV-A', '5'], json_encode($rows[0]));
-check('rows: no stored run -> empty last run and result', $rows[1][7] === '' && $rows[1][8] === '' && $rows[1][11] === '' && $rows[1][12] === '6');
-check('columns: result, computer and action indexes', ObjectsView::COLUMNS[ObjectsView::COL_RESULT] === 'Result' && ObjectsView::COLUMNS[ObjectsView::COL_COMPUTER] === 'Computer' && ObjectsView::COLUMNS[ObjectsView::COL_ACTION] === 'Action');
-check('badge: green, red, yellow', ObjectsView::badge('success') === 'bg-success-lt' && ObjectsView::badge('failed') === 'bg-danger-lt' && ObjectsView::badge('abnormal') === 'bg-warning-lt');
+check('rows: matched object shows its stored facts and newest run', $rows[0] === ['VM-A', '', 'vm', 'JOB-1', '2026-10-30 01:10:00', '7', '12 GB', '2026-10-31 01:00:00', 'failed', '2026-10-20 pass', 'Vinchin · Main', 'Matched', 'SRV-A', '5'], json_encode($rows[0]));
+check('rows: no stored run, no Computer -> empty last run, result, restore test and Computer', $rows[1][7] === '' && $rows[1][8] === '' && $rows[1][9] === '' && $rows[1][12] === '' && $rows[1][13] === '6');
+check('columns: name, result, restore test, computer and action indexes', ObjectsView::COLUMNS[ObjectsView::COL_NAME] === 'Name' && ObjectsView::COLUMNS[ObjectsView::COL_RESTORE] === 'Restore test' && ObjectsView::COLUMNS[ObjectsView::COL_RESULT] === 'Result' && ObjectsView::COLUMNS[ObjectsView::COL_COMPUTER] === 'Computer' && ObjectsView::COLUMNS[ObjectsView::COL_ACTION] === 'Action');
+check('badge: green, red, yellow', ObjectsView::badge('success') === 'bg-success-lt' && ObjectsView::badge('failed') === 'bg-danger-lt' && ObjectsView::badge('abnormal') === 'bg-warning-lt' && ObjectsView::badge('pass') === 'bg-success-lt' && ObjectsView::badge('partial') === 'bg-warning-lt');
+parse_str(ObjectsView::restoreListQuery(11), $q);
+check('restore list narrowed to the Computer (search option 3, equals)', ($q['criteria'][0] ?? null) === ['field' => '3', 'searchtype' => 'equals', 'value' => '11'] && ($q['reset'] ?? '') === 'reset');
+$so = $read('src/RestoreTest.php');
+check('restore tests: search option 3 is the Computer', str_contains($so, "['id' => 3, 'table' => 'glpi_computers', 'field' => 'name', 'linkfield' => 'computers_id'"));
 
 $obj = $read('front/objects.php');
 check('page: GLPI table with the objects rows', str_contains($obj, "render('components/datatable.html.twig', \$view)") && str_contains($obj, 'ObjectsView::rows('));
@@ -37,6 +41,8 @@ check('page: runs read from the stored runs, no source call', str_contains($obj,
 check('page: action column fixed (no filter, no sort)', str_contains($obj, "'fixed' => [ObjectsView::COL_ACTION]"));
 check('page: failure reason only as escaped hover text', str_contains($obj, "title=\"' . htmlescape(\$m['reason'])"));
 check('page: reloadTab reloads with the state kept', str_contains($obj, 'window.reloadTab = (add) =>') && str_contains($obj, "'?state=' . \$state"));
+check('page: VM name and Computer open the GLPI asset', str_contains($obj, '$out[ObjectsView::COL_NAME]     = \'<a href="\' . $asset') && str_contains($obj, 'Computer::getFormURLWithID($m[\'cid\'])'));
+check('page: restore test opens the Computer\'s tests; record one only with CREATE', str_contains($obj, 'ObjectsView::restoreListQuery($m[\'cid\'])') && str_contains($obj, 'RightDefinition::RESTORETEST, CREATE') && str_contains($obj, "'?computers_id=' . \$m['cid']"));
 check('page: Columns menu kept in this browser', str_contains($obj, '"backupinfo.objects.cols"') && str_contains($obj, "TableUi::columnsButton('backupinfo-objects-cols')"));
 
 done();

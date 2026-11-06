@@ -12,6 +12,8 @@ use GlpiPlugin\Backupinfo\AuditPage;
 use GlpiPlugin\Backupinfo\AuditPeriod;
 use GlpiPlugin\Backupinfo\AuditTable;
 use GlpiPlugin\Backupinfo\Csv;
+use GlpiPlugin\Backupinfo\ObjectsView;
+use GlpiPlugin\Backupinfo\RestoreTest;
 use Glpi\Application\View\TemplateRenderer;
 use GlpiPlugin\Backupinfo\RightDefinition;
 use GlpiPlugin\Backupinfo\TableUi;
@@ -113,7 +115,37 @@ if (isset($_GET['section'])) {
         exit;
     }
     // GLPI's own table: filter row, sort and pages on every row; the exports stay complete.
-    $view = AuditTable::view('backupinfo-dt-' . $key, $section, $_GET, (int) ($_SESSION['glpilist_limit'] ?? 15));
+    // Computer names open the GLPI asset (a name shared by two in-scope Computers stays plain);
+    // on Restore tests, the test columns open that Computer's restore tests.
+    $nameIds = [];
+    foreach ($data->computers as $cid => $cname) {
+        $nameIds[$cname][] = (int) $cid;
+    }
+    $compCol  = array_search('Computer', $section['columns'], true);
+    $testCols = $key === 'restore' ? array_values(array_filter([
+        array_search('Last test', $section['columns'], true),
+        array_search('Tests in period', $section['columns'], true),
+    ], 'is_int')) : [];
+    $canTests = Session::haveRight(RightDefinition::RESTORETEST, READ);
+    $links    = static function (array $row) use ($nameIds, $compCol, $testCols, $canTests): array {
+        $out = [];
+        if (!is_int($compCol)) {
+            return $out;
+        }
+        $ids = $nameIds[(string) ($row[$compCol] ?? '')] ?? [];
+        if (count($ids) !== 1) {
+            return $out;
+        }
+        $out[$compCol] = '<a href="' . htmlescape(Computer::getFormURLWithID($ids[0])) . '">' . htmlescape((string) $row[$compCol]) . '</a>';
+        foreach ($canTests ? $testCols : [] as $i) {
+            $text = (string) ($row[$i] ?? '');
+            if ($text !== '' && $text !== '0') {
+                $out[$i] = '<a href="' . htmlescape(RestoreTest::getSearchURL() . '?' . ObjectsView::restoreListQuery($ids[0])) . '">' . htmlescape($text) . '</a>';
+            }
+        }
+        return $out;
+    };
+    $view = AuditTable::view('backupinfo-dt-' . $key, $section, $_GET, (int) ($_SESSION['glpilist_limit'] ?? 15), ['html' => $links]);
     echo '<span class="d-none" data-count="' . $total . '" data-filtered="' . (int) $view['filtered_number'] . '"></span>';
     echo '<p class="text-muted">' . htmlescape($section['note']) . '</p>';
     foreach ($section['errors'] as $error) {

@@ -1,5 +1,17 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.4.0-rc6 — 2026-11-06 (release candidate)
+
+- **Links to GLPI assets and restore tests.**
+  - Backup objects: the VM name and the Computer open the GLPI Computer.
+  - Backup objects: a new **Restore test** column shows the Computer's newest restore test (date and
+    result). It opens that Computer's restore tests; with none yet, **Record a test** opens a new
+    test for it (restore-test CREATE right only).
+  - Audit evidence: the Computer opens the GLPI Computer on tabs 1 to 6. A name shared by two
+    in-scope Computers stays plain. On tab 5, Last test and Tests in period open the Computer's
+    restore tests.
+  - Links are screen only; the exports are unchanged.
+
 ## 0.4.0-rc5 — 2026-11-06 (release candidate)
 
 - **Backup objects: the backup results that exist, for auditors.**

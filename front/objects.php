@@ -11,6 +11,7 @@ use Glpi\DBAL\QueryFunction;
 use GlpiPlugin\Backupinfo\AuditTable;
 use GlpiPlugin\Backupinfo\Cron;
 use GlpiPlugin\Backupinfo\ObjectsView;
+use GlpiPlugin\Backupinfo\RestoreTest;
 use GlpiPlugin\Backupinfo\TableUi;
 use GlpiPlugin\Backupinfo\RightDefinition;
 use GlpiPlugin\Backupinfo\Source\Registry;
@@ -152,7 +153,10 @@ foreach (array_chunk(array_keys($lastTimes), 500) as $chunk) {
         $runRows[] = $row;
     }
 }
-$last = ObjectsView::lastRuns($runRows);
+$last  = ObjectsView::lastRuns($runRows);
+$tests = RestoreTest::latest(array_map(static fn(array $o): int => (int) $o['items_id'], $objects));
+$canTest = Session::haveRight(RightDefinition::RESTORETEST, CREATE);
+$canSeeTests = Session::haveRight(RightDefinition::RESTORETEST, READ);
 
 $labels = [
     'matched'   => __('Matched', 'backupinfo'),
@@ -170,10 +174,10 @@ if (!$canPin) {
     $columns[ObjectsView::COL_ACTION] = 'ID';
 }
 $page = Html::getPrefixedUrl('/plugins/backupinfo/front/objects.php');
-$view = AuditTable::view('backupinfo-objects', ['columns' => $columns, 'rows' => ObjectsView::rows($objects, $last, Registry::types(), $labels)], $_GET,
+$view = AuditTable::view('backupinfo-objects', ['columns' => $columns, 'rows' => ObjectsView::rows($objects, $last, $tests, Registry::types(), $labels)], $_GET,
     (int) ($_SESSION['glpilist_limit'] ?? 15), [
         'fixed' => [ObjectsView::COL_ACTION],
-        'html'  => static function (array $row) use ($meta, $canPin, $page): array {
+        'html'  => static function (array $row) use ($meta, $canPin, $page, $canTest, $canSeeTests): array {
             $id  = (int) $row[ObjectsView::COL_ACTION];
             $m   = $meta[$id] ?? ['cid' => 0, 'match' => '', 'reason' => ''];
             $out = [];
@@ -183,7 +187,20 @@ $view = AuditTable::view('backupinfo-objects', ['columns' => $columns, 'rows' =>
                     . ($m['reason'] !== '' && $res !== 'success' ? ' title="' . htmlescape($m['reason']) . '" data-bs-toggle="tooltip"' : '') . '>' . htmlescape($res) . '</span>';
             }
             if ($m['cid'] > 0) {
-                $out[ObjectsView::COL_COMPUTER] = '<a href="' . htmlescape(Computer::getFormURLWithID($m['cid'])) . '">' . htmlescape((string) $row[ObjectsView::COL_COMPUTER]) . '</a>';
+                // The VM name and the Computer both open the GLPI asset.
+                $asset = htmlescape(Computer::getFormURLWithID($m['cid']));
+                $out[ObjectsView::COL_NAME]     = '<a href="' . $asset . '">' . htmlescape((string) $row[ObjectsView::COL_NAME]) . '</a>';
+                $out[ObjectsView::COL_COMPUTER] = '<a href="' . $asset . '">' . htmlescape((string) $row[ObjectsView::COL_COMPUTER]) . '</a>';
+                // Newest restore test: opens this Computer's restore tests; none yet: record one.
+                $test = (string) $row[ObjectsView::COL_RESTORE];
+                if ($test !== '' && $canSeeTests) {
+                    $result = (string) substr($test, (int) strrpos($test, ' ') + 1);
+                    $out[ObjectsView::COL_RESTORE] = '<a href="' . htmlescape(RestoreTest::getSearchURL() . '?' . ObjectsView::restoreListQuery($m['cid'])) . '">'
+                        . htmlescape(substr($test, 0, (int) strrpos($test, ' '))) . ' <span class="badge ' . ObjectsView::badge($result) . '">' . htmlescape($result) . '</span></a>';
+                } elseif ($test === '' && $canTest) {
+                    $out[ObjectsView::COL_RESTORE] = '<a class="text-muted" href="' . htmlescape(RestoreTest::getFormURL() . '?computers_id=' . $m['cid']) . '"><i class="ti ti-plus"></i> '
+                        . __s('Record a test', 'backupinfo') . '</a>';
+                }
             }
             if (!$canPin) {
                 return $out;
@@ -219,7 +236,7 @@ echo '</div>';
 if (!$canConfig) {
     echo '<div class="text-muted mb-2">' . __s('Objects without a computer are shown only to Backup Info administrators.', 'backupinfo') . '</div>';
 }
-echo '<div class="text-muted mb-2">' . __s('Last run and Result: the newest backup run stored by the sync for this object (same connection and VM name), with the reason of a failure on hover.', 'backupinfo') . '</div>';
+echo '<div class="text-muted mb-2">' . __s('Last run and Result: the newest backup run stored by the sync for this object (same connection and VM name), with the reason of a failure on hover. Restore test: the newest restore test of its Computer.', 'backupinfo') . '</div>';
 
 echo '<div id="backupinfo-objects">';
 echo TemplateRenderer::getInstance()->render('components/datatable.html.twig', $view);

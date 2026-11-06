@@ -321,6 +321,30 @@ class RestoreTest extends CommonDBTM
     }
 
     /**
+     * The newest test per Computer, whatever its result (Backup objects page).
+     *
+     * @param list<int> $computerIds
+     * @return array<int, array{date: string, result: string}>
+     */
+    public static function latest(array $computerIds): array
+    {
+        global $DB;
+
+        $out = [];
+        foreach (array_chunk(array_values(array_unique(array_filter($computerIds))), 500) as $chunk) {
+            foreach ($DB->request([
+                'SELECT' => ['computers_id', 'date', 'result'],
+                'FROM'   => self::TABLE,
+                'WHERE'  => ['computers_id' => $chunk],
+                'ORDER'  => ['date DESC', 'id DESC'],
+            ]) as $row) {
+                $out[(int) $row['computers_id']] ??= ['date' => (string) $row['date'], 'result' => (string) $row['result']];
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Date of the last PASSED test per Computer: a failed test is shown but does not restart the clock.
      *
      * @param list<int> $computerIds

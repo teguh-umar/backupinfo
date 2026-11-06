@@ -72,6 +72,8 @@ check('page: sections render GLPI\'s datatable', str_contains($page, "render('co
 check('page: reloadTab defined for the section on screen', str_contains($page, 'window.reloadTab = (add) =>') && str_contains($page, '.tab-pane.active'));
 check('page: filter row bound per section', str_contains($page, 'T.bindFilters($("#backupinfo-audit-body-" + key)') && str_contains($page, 'TableUi::script()'));
 check('page: Columns menu kept per section in this browser', str_contains($page, '"backupinfo.audit.cols." + key') && str_contains($page, "TableUi::columnsButton('backupinfo-audit-cols-' . \$key)"));
+check('page: Computer opens the asset when its name is unique in scope', str_contains($page, 'count($ids) !== 1') && str_contains($page, 'Computer::getFormURLWithID($ids[0])') && str_contains($page, "['html' => \$links]"));
+check('page: restore test columns open the Computer\'s restore tests (READ)', str_contains($page, "array_search('Last test'") && str_contains($page, 'ObjectsView::restoreListQuery($ids[0])') && str_contains($page, 'RightDefinition::RESTORETEST, READ'));
 check('page: no 500-row screen cap any more', !str_contains($page, '$maxRows'));
 // Exports stay complete (user, 2026-11-06): they never read the screen filters.
 $exportPart = substr($page, 0, (int) strpos($page, "isset(\$_GET['section'])"));
