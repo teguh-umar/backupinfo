@@ -1,5 +1,15 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.4.0-rc4 — 2026-11-06 (release candidate)
+
+- **Audit evidence: filters, sort, pages and a column choice on every tab.**
+  - Each tab uses GLPI's own table: a Filter button with a filter row, sorting by column, and
+    pages with the user's page size. The 500-row screen limit is gone.
+  - Columns with few values (statuses, Computers, jobs) filter by a choice list; the others by text.
+  - Filters run on every row of the period, not only the rows on screen. The tab title shows
+    "(12 of 131)" while a filter is on.
+  - **Columns** hides or shows columns. The choice is kept per tab in the browser.
+  - The Excel and CSV exports are unchanged: always every row and every column.
 ## 0.4.0-rc3 — 2026-11-06 (release candidate)
 
 - **Optional follow-up "Backup succeeded again"**, off by default. When a later backup of the same

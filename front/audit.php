@@ -10,14 +10,15 @@
 use GlpiPlugin\Backupinfo\AuditData;
 use GlpiPlugin\Backupinfo\AuditPage;
 use GlpiPlugin\Backupinfo\AuditPeriod;
+use GlpiPlugin\Backupinfo\AuditTable;
 use GlpiPlugin\Backupinfo\Csv;
+use Glpi\Application\View\TemplateRenderer;
 use GlpiPlugin\Backupinfo\RightDefinition;
 use GlpiPlugin\Backupinfo\Xlsx;
 
 include('../../../inc/includes.php');
 Session::checkRight(RightDefinition::REPORT, READ);
 
-$maxRows = 500; // per section on screen; the exports have every row
 $live    = []; // 0.3.0-rc7: every section reads GLPI (targets and platform VMs from the daily snapshots)
 // Excel sheet names (31 characters at most)
 $tabs    = ['policy' => '1 Policy', 'coverage' => '2 Coverage', 'population' => '3 Runs (population)', 'failures' => '4 Failures',
@@ -101,31 +102,23 @@ if (isset($_GET['section'])) {
     $total   = count($section['rows']);
     header('Content-Type: text/html; charset=UTF-8');
     header('Cache-Control: no-store');
-    echo '<span class="d-none" data-count="' . $total . '"></span>';
+    if ($total === 0) {
+        echo '<span class="d-none" data-count="0" data-filtered="0"></span>';
+        echo '<p class="text-muted">' . htmlescape($section['note']) . '</p>';
+        foreach ($section['errors'] as $error) {
+            echo '<div class="alert alert-warning">' . htmlescape($error) . '</div>';
+        }
+        echo '<div class="text-muted">' . __s('Nothing for this period.', 'backupinfo') . '</div>';
+        exit;
+    }
+    // GLPI's own table: filter row, sort and pages on every row; the exports stay complete.
+    $view = AuditTable::view('backupinfo-dt-' . $key, $section, $_GET, (int) ($_SESSION['glpilist_limit'] ?? 15));
+    echo '<span class="d-none" data-count="' . $total . '" data-filtered="' . (int) $view['filtered_number'] . '"></span>';
     echo '<p class="text-muted">' . htmlescape($section['note']) . '</p>';
     foreach ($section['errors'] as $error) {
         echo '<div class="alert alert-warning">' . htmlescape($error) . '</div>';
     }
-    if ($total === 0) {
-        echo '<div class="text-muted">' . __s('Nothing for this period.', 'backupinfo') . '</div>';
-        exit;
-    }
-    echo '<div class="table-responsive"><table class="tab_cadre_fixehov"><tr class="noHover">';
-    foreach ($section['columns'] as $column) {
-        echo '<th>' . htmlescape($column) . '</th>';
-    }
-    echo '</tr>';
-    foreach (array_slice($section['rows'], 0, $maxRows) as $row) {
-        echo '<tr class="tab_bg_1">';
-        foreach ($row as $cell) {
-            echo '<td>' . htmlescape((string) $cell) . '</td>';
-        }
-        echo '</tr>';
-    }
-    echo '</table></div>';
-    if ($total > $maxRows) {
-        echo '<div class="text-muted mt-2">' . htmlescape(sprintf(__('Showing %1$d of %2$d rows; the export has all of them.', 'backupinfo'), $maxRows, $total)) . '</div>';
-    }
+    echo TemplateRenderer::getInstance()->render('components/datatable.html.twig', $view);
     exit;
 }
 
@@ -174,10 +167,15 @@ foreach ($titles as $key => $title) {
     echo '<div class="tab-pane' . ($key === 'policy' ? ' show active' : '') . '" role="tabpanel" id="backupinfo-audit-' . $key . '"><div class="card mb-3">';
     echo '<div class="card-header d-flex justify-content-between align-items-center">';
     echo '<h3 class="card-title">' . htmlescape($title) . ' <span class="text-muted" id="backupinfo-audit-count-' . $key . '"></span></h3>';
+    echo '<div class="d-flex gap-2">';
+    // Columns shown on screen, kept per section in this browser; the exports keep every column.
+    echo '<div class="dropdown"><button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside">'
+        . '<i class="ti ti-columns"></i> ' . __s('Columns', 'backupinfo') . '</button>'
+        . '<div class="dropdown-menu dropdown-menu-end p-2" style="max-height: 60vh; overflow-y: auto;" id="backupinfo-audit-cols-' . $key . '"></div></div>';
     echo '<div class="btn-group">';
     echo '<a class="btn btn-sm btn-outline-success" href="' . htmlescape($exportUrl($key)) . '"><i class="ti ti-file-spreadsheet"></i> ' . __s('Excel', 'backupinfo') . '</a>';
     echo '<a class="btn btn-sm btn-outline-secondary" href="' . htmlescape($exportUrl($key, 'csv')) . '">' . __s('CSV', 'backupinfo') . '</a>';
-    echo '</div></div>';
+    echo '</div></div></div>';
     echo '<div class="card-body" id="backupinfo-audit-body-' . $key . '"><div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>'
         . (in_array($key, $live, true) ? __s('Reading the backup system...', 'backupinfo') : __s('Loading...', 'backupinfo')) . '</div></div>';
     echo '</div></div>';
@@ -186,21 +184,71 @@ echo '</div></div>';
 
 // GLPI sections first, then the live reads; one at a time (the session serialises them anyway).
 $order = array_merge(array_values(array_diff(AuditPage::SECTIONS, $live)), $live);
-echo Html::scriptBlock('(async () => {
-    const base = ' . json_encode($self . '?' . http_build_query($keep), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';
-    const failed = ' . json_encode(__('This section could not be loaded. Reload the page or use the export.', 'backupinfo'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';
-    for (const key of ' . json_encode($order) . ') {
-        const body = document.getElementById("backupinfo-audit-body-" + key);
+$js = static fn(mixed $v): string => json_encode($v, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+echo Html::scriptBlock('(() => {
+    const base = ' . $js($self . '?' . http_build_query($keep)) . ';
+    const failed = ' . $js(__('This section could not be loaded. Reload the page or use the export.', 'backupinfo')) . ';
+    const ofText = ' . $js(__('%1$d of %2$d', 'backupinfo')) . ';
+    const showAll = ' . $js(__('Show all columns', 'backupinfo')) . ';
+    const state = {};
+
+    // Columns hidden on screen, per section, in this browser only.
+    const colsKey = (key) => "backupinfo.audit.cols." + key;
+    const hiddenCols = (key) => { try { return new Set(JSON.parse(localStorage.getItem(colsKey(key)) || "[]")); } catch (e) { return new Set(); } };
+    const saveHidden = (key, set) => { try { localStorage.setItem(colsKey(key), JSON.stringify([...set])); } catch (e) {} };
+    const labels = (body) => {
+        const head = body.querySelector("table thead tr:not(.filter_row)");
+        if (!head) { return []; }
+        return [...head.children].filter((th) => !th.querySelector(".show_filters")).map((th) => th.textContent.trim());
+    };
+    const applyCols = (key, body) => {
+        const names = labels(body), hidden = hiddenCols(key);
+        body.querySelectorAll("table tr").forEach((tr) => {
+            const shift = tr.classList.contains("filter_row") ? 1 : 0;
+            if (tr.children.length < names.length) { return; }
+            names.forEach((name, i) => { const cell = tr.children[i + shift]; if (cell) { cell.style.display = hidden.has(name) ? "none" : ""; } });
+        });
+    };
+    const colMenu = (key, body) => {
+        const menu = document.getElementById("backupinfo-audit-cols-" + key), names = labels(body), hidden = hiddenCols(key);
+        menu.textContent = "";
+        names.forEach((name) => {
+            const label = document.createElement("label"), box = document.createElement("input");
+            label.className = "dropdown-item form-check m-0";
+            box.type = "checkbox"; box.className = "form-check-input me-2"; box.checked = !hidden.has(name);
+            box.addEventListener("change", () => { const h = hiddenCols(key); box.checked ? h.delete(name) : h.add(name); saveHidden(key, h); applyCols(key, body); });
+            label.append(box, document.createTextNode(name));
+            menu.appendChild(label);
+        });
+        if (names.length) {
+            const all = document.createElement("button");
+            all.type = "button"; all.className = "btn btn-sm btn-link w-100 mt-1"; all.textContent = showAll;
+            all.addEventListener("click", () => { saveHidden(key, new Set()); colMenu(key, body); applyCols(key, body); });
+            menu.appendChild(all);
+        }
+    };
+
+    const load = async (key) => {
+        const body = document.getElementById("backupinfo-audit-body-" + key), st = state[key];
+        const extra = new URLSearchParams(st.filters);
+        if (st.sort) { extra.set("sort", st.sort); extra.set("order", st.order); }
+        if (st.start) { extra.set("start", String(st.start)); }
+        if (st.limit) { extra.set("glpilist_limit", st.limit); }
         try {
-            const res = await fetch(base + "&section=" + encodeURIComponent(key), {credentials: "same-origin"});
+            const res = await fetch(base + "&section=" + encodeURIComponent(key) + "&" + extra.toString(), {credentials: "same-origin"});
             if (!res.ok) {
                 throw new Error(String(res.status));
             }
-            body.innerHTML = await res.text();
+            $(body).find(".filter_row .select2-hidden-accessible").select2("close");
+            $(body).html(await res.text()); // jQuery runs the table\'s own script (select2 on the choice filters)
             const count = body.querySelector("[data-count]");
             if (count) {
-                document.getElementById("backupinfo-audit-count-" + key).textContent = "(" + count.dataset.count + ")";
+                const total = Number(count.dataset.count), shown = Number(count.dataset.filtered);
+                document.getElementById("backupinfo-audit-count-" + key).textContent = "(" + (shown === total ? total : ofText.replace("%1$d", shown).replace("%2$d", total)) + ")";
             }
+            if (st.limit) { $(body).find("select[name=list_limit]").val(st.limit); }
+            colMenu(key, body);
+            applyCols(key, body);
         } catch (e) {
             body.innerHTML = "";
             const div = document.createElement("div");
@@ -208,7 +256,56 @@ echo Html::scriptBlock('(async () => {
             div.textContent = failed;
             body.appendChild(div);
         }
-    }
+    };
+
+    const activeKey = () => {
+        const pane = document.querySelector(".tab-pane.active[id^=\"backupinfo-audit-\"]");
+        return pane ? pane.id.replace("backupinfo-audit-", "") : null;
+    };
+
+    // GLPI\'s table calls reloadTab() for sort, pages, page size and filters; this page has no item
+    // tabs, so it is defined here for the section on screen.
+    window.reloadTab = (add) => {
+        const key = activeKey();
+        if (!key || !state[key]) { return; }
+        const st = state[key], p = new URLSearchParams(add || "");
+        if (!add) { st.filters = ""; st.start = 0; }
+        const f = new URLSearchParams();
+        p.forEach((v, k) => { if (k.startsWith("filters[")) { f.append(k, v); } });
+        if ([...f.keys()].length) { st.filters = f.toString(); st.start = 0; }
+        if (p.has("sort")) { st.sort = p.get("sort"); st.order = p.get("order") || "ASC"; }
+        if (p.has("start")) { st.start = parseInt(p.get("start"), 10) || 0; }
+        if (p.has("glpilist_limit")) { st.limit = p.get("glpilist_limit"); st.start = 0; }
+        load(key);
+    };
+
+    // The filter row, as GLPI\'s log_filters.js does it for item tabs, scoped to each section.
+    const bindFilters = (key) => {
+        const $body = $("#backupinfo-audit-body-" + key);
+        let timer = null;
+        const changed = () => {
+            clearTimeout(timer);
+            window.reloadTab($body.find(".filter_row [name^=\"filters[\"]").serialize());
+        };
+        $body.on("click", ".show_filters", (ev) => {
+            ev.preventDefault();
+            window.reloadTab($(ev.currentTarget).hasClass("active") ? "" : "filters[active]=1");
+        });
+        $body.on("select2:unselecting", ".filter_row .select2-hidden-accessible", (ev) => {
+            if (ev.params && ev.params.args && ev.params.args.originalEvent) { ev.params.args.originalEvent.stopPropagation(); }
+        });
+        $body.on("input", ".filter_row input[name^=\"filters[\"]", () => { clearTimeout(timer); timer = setTimeout(changed, 800); });
+        $body.on("change", ".filter_row select[name^=\"filters[\"]", changed);
+        $body.on("keypress", ".filter_row [name^=\"filters[\"]", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); changed(); } });
+    };
+
+    (async () => {
+        for (const key of ' . $js($order) . ') {
+            state[key] = {filters: "", sort: "", order: "ASC", start: 0, limit: ""};
+            bindFilters(key);
+            await load(key);
+        }
+    })();
 })();');
 
 Html::footer();
