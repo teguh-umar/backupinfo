@@ -6,14 +6,18 @@ foreach ([
     'Text', 'Source/BackupObject', 'Source/Run', 'Source/BackupSource', 'Source/ProbeableSource',
     'Source/AuditProbeableSource', 'Source/RunHistorySource', 'Source/AuditSource', 'Source/PartialFetch',
     'Vinchin/Signer', 'Http/Transport', 'Vinchin/Client', 'Vinchin/ItemMapper', 'Vinchin/JobHistoryMapper',
+    'Source/VerifyingSource',
     'Vinchin/ScheduleMapper', 'Vinchin/RunMapper', 'Source/Event', 'Source/Target', 'Vinchin/EventMapper', 'Vinchin/VinchinSource', 'Sync/VerifyImport',
+    'Vinchin/VerifyMapper',
 ] as $f) {
     require BI_ROOT . "/src/$f.php";
 }
 
+use GlpiPlugin\Backupinfo\Source\VerifyingSource;
 use GlpiPlugin\Backupinfo\Sync\VerifyImport;
 use GlpiPlugin\Backupinfo\Vinchin\Client;
 use GlpiPlugin\Backupinfo\Vinchin\ItemMapper;
+use GlpiPlugin\Backupinfo\Vinchin\VerifyMapper;
 use GlpiPlugin\Backupinfo\Vinchin\VinchinSource;
 
 require __DIR__ . '/fakes.php';
@@ -37,15 +41,16 @@ check('withSchedule keeps the timepoint', $byName['VM-A']->withSchedule(24)->tim
 // --- verify rows -> restore-test inputs
 $row = ['timepoint' => '2026-10-02 01:00:00', 'timepoint_uuid' => 'tp-new', 'start_time' => '2026-10-02 03:00:00', 'end_time' => '2026-10-02 03:20:00',
     'ping_status' => 1, 'ping_status_des' => 'Success', 'heartbeat_status_des' => 'Success', 'screen_status_des' => '<b>Success</b>', 'integrity_check_status_des' => 'Success'];
-$in = VerifyImport::toInput($row, 11);
+$in = VerifyMapper::toInput($row, 11);
 check('verify: pass when every reported check succeeded', $in !== null && $in['result'] === 'pass' && $in['computers_id'] === 11);
 check('verify: method, source, ref, date', $in['method'] === 'vinchin_verify' && $in['source'] === 'vinchin' && $in['source_ref'] === 'tp-new@2026-10-02 03:00:00' && $in['date'] === '2026-10-02');
 check('verify: comment lists the checks in plain text', str_contains($in['comment'], 'Boot screenshot: Success') && str_contains($in['comment'], 'restore point 2026-10-02 01:00:00'));
-check('verify: one check failed with others ok -> partial', VerifyImport::toInput(['ping_status_des' => 'Failed'] + $row, 11)['result'] === 'partial');
-check('verify: all reported checks failed -> fail', VerifyImport::toInput(['ping_status_des' => 'Failed', 'heartbeat_status_des' => 'Failed', 'screen_status_des' => 'Failed', 'integrity_check_status_des' => 'Error'] + $row, 11)['result'] === 'fail');
-check('verify: no readable check -> skipped, never guessed', VerifyImport::toInput(['timepoint_uuid' => 'tp', 'start_time' => '2026-10-02 03:00:00', 'ping_status_des' => 'Not enabled'], 11) === null);
-check('verify: no time -> skipped', VerifyImport::toInput(['ping_status_des' => 'Success', 'timepoint_uuid' => 'tp'], 11) === null);
-check('verify: end time used for the date', VerifyImport::toInput(['end_time' => '2026-10-03 00:10:00'] + $row, 11)['date'] === '2026-10-03');
+check('verify: one check failed with others ok -> partial', VerifyMapper::toInput(['ping_status_des' => 'Failed'] + $row, 11)['result'] === 'partial');
+check('verify: all reported checks failed -> fail', VerifyMapper::toInput(['ping_status_des' => 'Failed', 'heartbeat_status_des' => 'Failed', 'screen_status_des' => 'Failed', 'integrity_check_status_des' => 'Error'] + $row, 11)['result'] === 'fail');
+check('verify: no readable check -> skipped, never guessed', VerifyMapper::toInput(['timepoint_uuid' => 'tp', 'start_time' => '2026-10-02 03:00:00', 'ping_status_des' => 'Not enabled'], 11) === null);
+check('verify: no time -> skipped', VerifyMapper::toInput(['ping_status_des' => 'Success', 'timepoint_uuid' => 'tp'], 11) === null);
+check('verify: end time used for the date', VerifyMapper::toInput(['end_time' => '2026-10-03 00:10:00'] + $row, 11)['date'] === '2026-10-03');
+check('VerifyImport names no brand', !preg_match('/Vinchin/', $read('src/Sync/VerifyImport.php')));
 
 // --- round-robin batches
 check('batch: first slice and next cursor', VerifyImport::batch(['a', 'b', 'c', 'd', 'e'], 0, 2) === [['a', 'b'], 2]);
@@ -81,5 +86,6 @@ check('cron: import never fails the sync', (bool) preg_match('/function importVe
 $rt = $read('src/RestoreTest.php');
 check('import flag cannot come from a form (static, not input)', str_contains($rt, 'private static bool $importing = false;') && str_contains($rt, 'if (self::$importing) {'));
 check('import dedupes on (source, source_ref)', str_contains($rt, "'source_ref' => \$input['source_ref']"));
+check('Cron uses the interface', str_contains($cron, 'instanceof VerifyingSource') && !str_contains($cron, "method_exists(\$source, 'verifications')"));
 
 done();

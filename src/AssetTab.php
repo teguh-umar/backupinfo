@@ -179,7 +179,7 @@ final class AssetTab
                     . '<td><a href="' . htmlescape($url) . '">' . htmlescape(Html::convDate((string) $t['date'])) . '</a></td>'
                     . '<td>' . htmlescape($methods[$t['method']] ?? (string) $t['method']) . '</td>'
                     . '<td>' . htmlescape($results[$t['result']] ?? (string) $t['result']) . '</td>'
-                    . '<td>' . htmlescape($t['source'] === RestoreTest::SOURCE_VINCHIN ? __('Vinchin', 'backupinfo') : __('Entered by hand', 'backupinfo')) . '</td>'
+                    . '<td>' . htmlescape(RestoreTest::sourceLabels()[$t['source']] ?? (string) $t['source']) . '</td>'
                     . '</tr>';
             }
             echo '</table>';

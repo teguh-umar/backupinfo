@@ -25,6 +25,8 @@ class RestoreTest extends CommonDBTM
     public const SOURCE_MANUAL  = 'manual';
     public const SOURCE_VINCHIN = 'vinchin';
     public const METHOD_VINCHIN = 'vinchin_verify';
+    /** Sources whose imported restore-test rows are read-only. */
+    public const IMPORTED_SOURCES = [self::SOURCE_VINCHIN];
     public const PASS           = 'pass';
 
     public static function getTypeName($nb = 0)
@@ -133,14 +135,18 @@ class RestoreTest extends CommonDBTM
     private static bool $importing = false;
 
     /**
-     * Stores one imported Vinchin verification (cron, no session). Read-only once stored; the
-     * (source, source_ref) key makes a second import of the same row a no-op.
+     * Stores one imported verification (cron, no session). Accepts only sources in
+     * IMPORTED_SOURCES. Read-only once stored; the (source, source_ref) key makes a second
+     * import of the same row a no-op.
      *
-     * @param array<string, mixed> $input from VerifyImport::toInput()
+     * @param array<string, mixed> $input from a VerifyingSource's verificationInputs()
      */
-    public static function importVinchin(array $input): bool
+    public static function importVerification(array $input): bool
     {
-        if (countElementsInTable(self::TABLE, ['source' => self::SOURCE_VINCHIN, 'source_ref' => $input['source_ref']]) > 0) {
+        if (!in_array($input['source'] ?? '', self::IMPORTED_SOURCES, true)) {
+            return false;
+        }
+        if (countElementsInTable(self::TABLE, ['source' => $input['source'], 'source_ref' => $input['source_ref']]) > 0) {
             return false;
         }
         self::$importing = true;
@@ -149,6 +155,21 @@ class RestoreTest extends CommonDBTM
         } finally {
             self::$importing = false;
         }
+    }
+
+    /** true when this row was imported from a source (read-only), not entered by hand. */
+    public function isImported(): bool
+    {
+        return in_array((string) ($this->fields['source'] ?? ''), self::IMPORTED_SOURCES, true);
+    }
+
+    /** @return array<string, string> source => label shown to users */
+    public static function sourceLabels(): array
+    {
+        return [
+            self::SOURCE_MANUAL  => __('Entered by hand', 'backupinfo'),
+            self::SOURCE_VINCHIN => __('Vinchin', 'backupinfo'),
+        ];
     }
 
     public function prepareInputForAdd($input)
@@ -198,7 +219,7 @@ class RestoreTest extends CommonDBTM
 
     public function canUpdateItem(): bool
     {
-        if (($this->fields['source'] ?? '') === self::SOURCE_VINCHIN) {
+        if ($this->isImported()) {
             return false;
         }
         return parent::canUpdateItem();
@@ -206,7 +227,7 @@ class RestoreTest extends CommonDBTM
 
     public function canPurgeItem(): bool
     {
-        if (($this->fields['source'] ?? '') === self::SOURCE_VINCHIN) {
+        if ($this->isImported()) {
             return false;
         }
         return parent::canPurgeItem();
@@ -262,7 +283,7 @@ class RestoreTest extends CommonDBTM
         echo "</td></tr>";
 
         echo "<tr class='tab_bg_1'><td>" . __s('Source', 'backupinfo') . "</td><td colspan='3'>"
-            . ($imported ? __s('Imported from Vinchin (read-only)', 'backupinfo') : __s('Entered by hand', 'backupinfo')) . "</td></tr>";
+            . htmlescape(self::sourceLabels()[$this->fields['source'] ?? self::SOURCE_MANUAL] ?? (string) ($this->fields['source'] ?? '')) . "</td></tr>";
 
         echo "<tr class='tab_bg_1'><td>" . __s('Comments') . "</td><td colspan='3'>";
         echo "<textarea name='comment' cols='80' rows='4'>" . htmlescape($this->fields['comment'] ?? '') . "</textarea>";

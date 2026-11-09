@@ -11,6 +11,7 @@ use GlpiPlugin\Backupinfo\Matching\Matcher;
 use GlpiPlugin\Backupinfo\Source\AuditSource;
 use GlpiPlugin\Backupinfo\Source\Registry;
 use GlpiPlugin\Backupinfo\Source\RunHistorySource;
+use GlpiPlugin\Backupinfo\Source\VerifyingSource;
 use GlpiPlugin\Backupinfo\Sync\DbObjectStore;
 use GlpiPlugin\Backupinfo\Sync\DbEventStore;
 use GlpiPlugin\Backupinfo\Sync\DbRunStore;
@@ -369,7 +370,7 @@ final class Cron extends \CommonGLPI
             $ok = [];
             foreach ($results as $r) {
                 $source = $sources[$r['id']] ?? null;
-                if ($r['status'] === 'ok' && is_object($source) && method_exists($source, 'verifications')) {
+                if ($r['status'] === 'ok' && $source instanceof VerifyingSource) {
                     $ok[(int) $r['id']] = $source;
                 }
             }
@@ -393,14 +394,13 @@ final class Cron extends \CommonGLPI
             $errors = 0;
             foreach ($batch as $key) {
                 [$conn, $tp, $computerId] = $targets[$key];
-                $res = $ok[$conn]->verifications($tp);
+                $res = $ok[$conn]->verificationInputs($tp, $computerId);
                 if ($res['error'] !== '') {
                     $errors++;
                     continue;
                 }
-                foreach ($res['rows'] as $row) {
-                    $input = VerifyImport::toInput($row, $computerId);
-                    if ($input !== null && RestoreTest::importVinchin($input)) {
+                foreach ($res['inputs'] as $input) {
+                    if (RestoreTest::importVerification($input)) {
                         $added++;
                     }
                 }

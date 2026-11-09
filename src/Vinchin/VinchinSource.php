@@ -13,9 +13,11 @@ use GlpiPlugin\Backupinfo\Source\ProbeableSource;
 use GlpiPlugin\Backupinfo\Source\Run;
 use GlpiPlugin\Backupinfo\Source\RunHistorySource;
 use GlpiPlugin\Backupinfo\Text;
+use GlpiPlugin\Backupinfo\Source\VerifyingSource;
 use GlpiPlugin\Backupinfo\Vinchin\AlarmJoin;
+use GlpiPlugin\Backupinfo\Vinchin\VerifyMapper;
 
-final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeableSource, PartialFetch, RunHistorySource, AuditSource
+final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeableSource, PartialFetch, RunHistorySource, AuditSource, VerifyingSource
 {
     /** true when the last fetch() came from the job-history fallback (recent VM jobs only) */
     private bool $partial = false;
@@ -502,6 +504,31 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
     {
         $times = array_filter(array_map(static fn(Run $r): ?int => ItemMapper::parseTime($r->start ?? $r->finish), $runs));
         return (string) RunMapper::time(($times === [] ? time() : min($times)) - 86400);
+    }
+
+    /**
+     * Verification inputs for one restore point of one computer: rows from verifications($tp)
+     * mapped through VerifyMapper. Never throws.
+     *
+     * @return array{inputs: list<array<string,mixed>>, error: string}
+     */
+    public function verificationInputs(string $timepointUuid, int $computerId): array
+    {
+        if (($error = $this->ensureLogin()) !== '') {
+            return ['inputs' => [], 'error' => $error];
+        }
+        $res = $this->verifications($timepointUuid);
+        if ($res['error'] !== '') {
+            return ['inputs' => [], 'error' => $res['error']];
+        }
+        $inputs = [];
+        foreach ($res['rows'] as $row) {
+            $input = VerifyMapper::toInput($row, $computerId);
+            if ($input !== null) {
+                $inputs[] = $input;
+            }
+        }
+        return ['inputs' => $inputs, 'error' => ''];
     }
 
     /** Login mode: one login per instance before the first read. Returns an error line, or ''. */

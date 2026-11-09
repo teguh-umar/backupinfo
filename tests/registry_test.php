@@ -10,6 +10,7 @@ require BI_ROOT . '/src/Source/RunHistorySource.php';
 require BI_ROOT . '/src/Source/AuditSource.php';
 require BI_ROOT . '/src/Source/PartialFetch.php';
 require BI_ROOT . '/src/Source/Registry.php';
+require BI_ROOT . '/src/Source/VerifyingSource.php';
 require BI_ROOT . '/src/Vinchin/Signer.php';
 require BI_ROOT . '/src/Http/Transport.php';
 require BI_ROOT . '/src/Http/CurlTransport.php';
