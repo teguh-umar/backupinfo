@@ -66,6 +66,16 @@ final class AuditData
             'targets'    => AuditPage::targets($this->snapshots('target', true), $this->snapshots('target', false), $this->connectionIdNames()),
             default      => throw new \InvalidArgumentException('unknown section'),
         };
+        // Declared gaps: each active connection states what it cannot provide for this section.
+        $gaps = [];
+        foreach ($this->sources() as $info) {
+            $type = (string) ($info['type'] ?? '');
+            foreach (Registry::gaps($type)[$key] ?? [] as $sentence) {
+                $gaps[] = ['connection' => $info['name'], 'sentence' => $sentence];
+            }
+        }
+        $table = AuditPage::withGaps($table, $gaps);
+
         return $table + ['errors' => $errors];
     }
 
@@ -155,7 +165,7 @@ final class AuditData
                     continue;
                 }
                 if ($source instanceof AuditSource) {
-                    $this->sources[(int) $conn['id']] = ['name' => (string) $conn['name'], 'source' => $source];
+                    $this->sources[(int) $conn['id']] = ['name' => (string) $conn['name'], 'source' => $source, 'type' => (string) ($conn['type'] ?? '')];
                 }
             }
         }

@@ -75,6 +75,27 @@ final class AuditPage
     }
 
     /**
+     * Append declared per-connection audit gaps to a section table's note.
+     * Pure: no GLPI, no secrets. With no gaps it returns $table unchanged.
+     *
+     * @param array{columns: list<string>, rows: list<list<scalar|null>>, note: string} $table
+     * @param list<array{connection: string, sentence: string}> $gaps
+     * @return array{columns: list<string>, rows: list<list<scalar|null>>, note: string}
+     */
+    public static function withGaps(array $table, array $gaps): array
+    {
+        foreach ($gaps as $gap) {
+            $connection = (string) ($gap['connection'] ?? '');
+            $sentence   = (string) ($gap['sentence'] ?? '');
+            if ($connection === '' || $sentence === '') {
+                continue;
+            }
+            $table['note'] .= ' ' . sprintf(__('Not available from %1$s: %2$s', 'backupinfo'), $connection, $sentence);
+        }
+        return $table;
+    }
+
+    /**
      * @param array<int, string> $computers
      * @param list<array<string, mixed>> $platformVms rows of AuditSource::platformVms()
      */
