@@ -58,7 +58,7 @@ check('restoreintervals unique (computers_id)',
 check('objects table has timepoint_uuid', str_contains($install, '`timepoint_uuid` varchar(64) DEFAULT NULL'));
 check('upgrade adds timepoint_uuid behind fieldExists', (bool) preg_match("/fieldExists\\('glpi_plugin_backupinfo_objects', 'timepoint_uuid'\\)/", $install));
 check('connections has api_version column', str_contains($install, "`api_version` varchar(20) NOT NULL DEFAULT ''"));
-check('upgrade adds api_version behind fieldExists', (bool) preg_match("/fieldExists\\('glpi_plugin_backupinfo_connections', 'api_version'\\)/", $install));
+check('upgrade adds api_version behind fieldExists', strpos($install, "'api_version' => \"varchar(20) NOT NULL DEFAULT ''\"") !== false);
 foreach (['run_pages_max' => 20, 'run_keep_months' => 36, 'restore_interval_months' => 12] as $key => $value) {
     check("config default $key = $value", (bool) preg_match("/'$key'\s*=>\s*$value,/", $install));
 }

@@ -145,13 +145,6 @@ final class Client
      */
     private function request(string $method, string $path, array $query = [], ?string $body = null): array
     {
-        if ($method !== 'GET' && $method !== 'POST') {
-            throw new \LogicException("Method {$method} not allowed");
-        }
-        if ($method === 'POST' && !in_array($path, self::POST_ROUTES, true)) {
-            throw new \LogicException("POST {$path} not allowed");
-        }
-
         if ($method === 'GET') {
             if ($this->accessToken === '') {
                 $this->login();
@@ -210,6 +203,13 @@ final class Client
      */
     private function sendRequest(string $method, string $url, array $headers, ?string $body): array
     {
+        $path = parse_url($url, PHP_URL_PATH);
+        if ($method !== 'GET' && $method !== 'POST') {
+            throw new \LogicException("Method {$method} not allowed");
+        }
+        if ($method === 'POST' && !in_array($path, self::POST_ROUTES, true)) {
+            throw new \LogicException("POST {$path} not allowed");
+        }
         try {
             return $this->transport->send($method, $url, $headers, $body, $this->verifyTls);
         } catch (\Throwable $e) {

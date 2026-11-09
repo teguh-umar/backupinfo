@@ -104,7 +104,7 @@ final class Registry
                     new CurlTransport(),
                     (string) ($connectionRow['username'] ?? ''),
                     $decrypt((string) ($connectionRow['password'] ?? '')),
-                    (string) ($connectionRow['api_version'] ?? '1.3-rev2'),
+                    trim((string) ($connectionRow['api_version'] ?? '')) ?: '1.3-rev2',
                     !empty($connectionRow['verify_tls'] ?? 1)
                 )
             ),

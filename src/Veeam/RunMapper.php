@@ -117,8 +117,9 @@ final class RunMapper
         return '';
     }
 
-    /** finish - start in seconds when both exist and are >= 0, else null. */
-    private static function duration(?string $start, ?string $end): ?int
+    /** finish - start in seconds when both exist and are >= 0, else null. Takes mixed so an int
+     * epoch (or any scalar) is accepted without a coercion surprise. */
+    private static function duration(mixed $start, mixed $end): ?int
     {
         if ($start === null || $end === null) {
             return null;

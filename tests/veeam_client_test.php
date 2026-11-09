@@ -243,4 +243,18 @@ $c->login();
 $c->logout();
 check('logout: swallows 500 without throwing', true);
 
+// --- Client guard: sendRequest() enforces the route allowlist, no transport call
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$c = new Client('vbr.example.test', $t, 'u', 'p');
+$ref = new ReflectionMethod($c, 'request');
+$ref->setAccessible(true);
+try {
+    $ref->invoke($c, 'POST', '/api/v1/jobs/x/start', []);
+    check('client guard: POST to jobs/x/start does not throw', false);
+} catch (\LogicException $e) {
+    check('client guard: POST to jobs/x/start throws LogicException', true);
+}
+check('client guard: no transport call for blocked POST', $t->calls === []);
+
 done();

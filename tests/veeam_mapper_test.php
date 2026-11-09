@@ -251,4 +251,34 @@ check('copy: status from RunMapper', $evCopy['status'] === 'failed');
 check('copy: item_status from item', $evCopy['item_status'] === 'failed');
 check('copy: error from item', $evCopy['error'] === 'target full');
 
+// --- TargetMapper::kind cloud kinds
+$target = ['id' => 't1', 'name' => 'T1', 'type' => 'VeeamVault', 'hostName' => 'n1',
+    'capacityGB' => 100, 'usedSpaceGB' => 10, 'freeGB' => 90, 'isOnline' => true, 'path' => '/t1'];
+$tgt = TargetMapper::map([$target])[0];
+check('target: VeeamVault kind cloud', $tgt['kind'] === 'cloud');
+$target['type'] = 'VeeamDataCloudVault';
+$tgt = TargetMapper::map([$target])[0];
+check('target: VeeamDataCloudVault kind cloud', $tgt['kind'] === 'cloud');
+
+// --- TargetMapper::online: only a real boolean maps to yes/no
+$target = ['id' => 't1', 'name' => 'T1', 'type' => 'WinLocal', 'hostName' => 'n1',
+    'capacityGB' => 100, 'usedSpaceGB' => 10, 'freeGB' => 90, 'isOnline' => true, 'path' => '/t1'];
+$tgt = TargetMapper::map([$target])[0];
+check('target: online true -> yes', $tgt['online'] === 'yes');
+$target['isOnline'] = false;
+$tgt = TargetMapper::map([$target])[0];
+check('target: online false -> no', $tgt['online'] === 'no');
+$target['isOnline'] = 'false';
+$tgt = TargetMapper::map([$target])[0];
+check('target: online string false -> empty', $tgt['online'] === '');
+$target['isOnline'] = 0;
+$tgt = TargetMapper::map([$target])[0];
+check('target: online int 0 -> empty', $tgt['online'] === '');
+
+// --- RunMapper::duration: mixed start/end (int creationTime -> durationS null, no error)
+$run = RunMapper::map(['id' => 'd1', 'name' => 'J', 'jobId' => 'j1',
+    'creationTime' => 1761600000, 'endTime' => null, 'state' => 'Stopped',
+    'result' => ['result' => 'Success']]);
+check('run: int creationTime -> durationS null, no error', $run !== null && $run->durationS === null);
+
 done();

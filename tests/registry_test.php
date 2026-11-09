@@ -79,6 +79,16 @@ $veeamRow = ['type' => 'veeam', 'host' => 'vbr.example.test', 'username' => 'u',
 $srcV = Registry::create($veeamRow, fn(string $s): string => $s);
 check('create() builds a VeeamSource for veeam', $srcV instanceof VeeamSource);
 
+// api_version '' (or missing) defaults to '1.3-rev2', never an empty header value.
+$veeamRowEmpty = ['type' => 'veeam', 'host' => 'vbr.example.test', 'username' => 'u', 'password' => 'ENC', 'api_version' => '', 'verify_tls' => 1];
+$srcVE = Registry::create($veeamRowEmpty, fn(string $s): string => $s);
+$rc = new ReflectionProperty(VeeamSource::class, 'client');
+$rc->setAccessible(true);
+$client = $rc->getValue($srcVE);
+$ra = new ReflectionProperty($client, 'apiVersion');
+$ra->setAccessible(true);
+check('registry: empty api_version defaults to 1.3-rev2', $ra->getValue($client) === '1.3-rev2');
+
 // BackupObject carries every field from the contract.
 $obj = new BackupObject(
     sourceKey: 'vinchin:1',

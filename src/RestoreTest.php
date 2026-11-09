@@ -283,7 +283,8 @@ class RestoreTest extends CommonDBTM
         echo "</td></tr>";
 
         echo "<tr class='tab_bg_1'><td>" . __s('Source', 'backupinfo') . "</td><td colspan='3'>"
-            . htmlescape(self::sourceLabels()[$this->fields['source'] ?? self::SOURCE_MANUAL] ?? (string) ($this->fields['source'] ?? '')) . "</td></tr>";
+            . htmlescape(sprintf(__('Imported from %s (read-only)', 'backupinfo'),
+                self::sourceLabels()[$this->fields['source'] ?? self::SOURCE_MANUAL] ?? (string) ($this->fields['source'] ?? ''))) . "</td></tr>";
 
         echo "<tr class='tab_bg_1'><td>" . __s('Comments') . "</td><td colspan='3'>";
         echo "<textarea name='comment' cols='80' rows='4'>" . htmlescape($this->fields['comment'] ?? '') . "</textarea>";

@@ -42,16 +42,18 @@ final class TargetMapper
     {
         $t = mb_strtolower($type);
         // disk types
-        if (in_array($t, ['winlocal', 'linuxlocal', 'linuxhardened'], true) || str_contains($t, 'dedupe')) {
+        if (in_array($t, ['winlocal', 'linuxlocal', 'linuxhardened'], true)) {
             return 'disk';
         }
+        // dedupe types: exact 1.3-rev2 ERepositoryType values are not confirmed,
+        // so they are left as '' (unknown) rather than guessed.
         // nas types
         if (in_array($t, ['smb', 'nfs'], true)) {
             return 'nas';
         }
         // cloud types
         $cloud = ['amazons3', 'azure', 's3compatible', 'googlecloud', 'ibmcloud',
-            'wasabicloud', 'veamdatacloudvault', 'veamvault', 'eleveneleven'];
+            'wasabicloud', 'veeamdatacloudvault', 'veeamvault', 'eleveneleven'];
         foreach ($cloud as $p) {
             if (str_starts_with($t, $p)) {
                 return 'cloud';
@@ -70,10 +72,13 @@ final class TargetMapper
 
     private static function online($v): string
     {
-        if ($v === null || $v === '') {
-            return '';
+        if ($v === true) {
+            return 'yes';
         }
-        return (bool) $v ? 'yes' : 'no';
+        if ($v === false) {
+            return 'no';
+        }
+        return '';
     }
 
     private static function detail(array $rs): string
