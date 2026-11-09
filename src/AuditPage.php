@@ -2,6 +2,8 @@
 
 namespace GlpiPlugin\Backupinfo;
 
+use GlpiPlugin\Backupinfo\Source\Registry;
+
 /**
  * The seven sections of the audit evidence page, built from plain arrays (no GLPI): each is
  * array{columns: list<string>, rows: list<list<scalar|null>>, note: string}. Column names are English
@@ -93,6 +95,25 @@ final class AuditPage
             $table['note'] .= ' ' . sprintf(__('Not available from %1$s: %2$s', 'backupinfo'), $connection, $sentence);
         }
         return $table;
+    }
+
+    /**
+     * Declared gaps for the given connections and section: one sentence per connection, taken
+     * straight from Registry::gaps($type)[$key] (a single string, never a list).
+     *
+     * @param list<array{name: string, type: string}> $connections
+     * @return list<array{connection: string, sentence: string}>
+     */
+    public static function gapsFor(array $connections, string $key): array
+    {
+        $gaps = [];
+        foreach ($connections as $info) {
+            $sentence = (string) (Registry::gaps((string) ($info['type'] ?? ''))[$key] ?? '');
+            if ($sentence !== '') {
+                $gaps[] = ['connection' => (string) ($info['name'] ?? ''), 'sentence' => $sentence];
+            }
+        }
+        return $gaps;
     }
 
     /**

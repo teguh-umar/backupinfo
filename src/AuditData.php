@@ -67,13 +67,7 @@ final class AuditData
             default      => throw new \InvalidArgumentException('unknown section'),
         };
         // Declared gaps: each active connection states what it cannot provide for this section.
-        $gaps = [];
-        foreach ($this->sources() as $info) {
-            $type = (string) ($info['type'] ?? '');
-            foreach (Registry::gaps($type)[$key] ?? [] as $sentence) {
-                $gaps[] = ['connection' => $info['name'], 'sentence' => $sentence];
-            }
-        }
+        $gaps = AuditPage::gapsFor(array_values($this->sources()), $key);
         $table = AuditPage::withGaps($table, $gaps);
 
         return $table + ['errors' => $errors];
