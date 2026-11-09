@@ -41,6 +41,18 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
         'targets' => 'tape is not available from Veeam REST.',
     ];
 
+    /** Probe shape check: endpoint => dot paths the mapper reads on the first data row. */
+    public const PROBE_REQUIRED = [
+        '/backupObjects' => ['id', 'name', 'restorePointsCount'],
+        '/restorePoints' => ['name', 'creationTime', 'backupId'],
+        '/backups' => ['id', 'name'],
+        '/sessions' => ['id', 'name', 'state', 'creationTime', 'result.result'],
+        '/sessions/{id}/taskSessions' => ['name', 'result.result'],
+        '/authorization/events' => ['id', 'creationTime', 'state'],
+        '/malwareDetection/events' => ['id', 'detectionTimeUtc', 'severity'],
+        '/backupInfrastructure/repositories/states' => ['name', 'type', 'capacityGB', 'freeGB', 'usedSpaceGB', 'isOnline'],
+    ];
+
     /** true when the last fetch() was truncated by maxRows */
     private bool $partial = false;
     /** Raw sessions keyed by session id, filled by runs(). */
@@ -384,31 +396,19 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
             $params['nameFilter'] = '*' . $search . '*';
         }
         foreach (['/backupObjects', '/restorePoints', '/backups'] as $path) {
-            list($r, $err) = $this->probeEndpoint($path, $params);
+            list($r, $err) = $this->probeEndpoint($path, $params, $limit, self::PROBE_REQUIRED[$path]);
             $raw[$path] = $r;
             if ($err !== '') {
                 $errors[] = $err;
             }
         }
-        $sessions = [];
-        list($sRaw, $sErr) = $this->probeEndpoint('/sessions', ['typeFilter' => 'BackupJob', 'limit' => $limit]);
-        $raw['/sessions'] = $sRaw;
-        if ($sErr !== '') {
-            $errors[] = $sErr;
-        } else {
-            $sessions = $sRaw;
-            // Shape check: every session must carry result.result
-            foreach ($sessions as $s) {
-                if (is_array($s)) {
-                    $miss = Shape::missing($s, ['result.result']);
-                    if ($miss !== []) {
-                        $raw['/sessions'][0]['_check'] = 'unexpected shape: missing ' . implode(', ', $miss);
-                        break;
-                    }
-                }
-            }
-        }
-        $objects = ObjectMapper::map($sessions, [], []);
+        // Objects come from /backupObjects (with /restorePoints and /backups), like fetch(),
+        // stripping the _check status rows first.
+        $objects = ObjectMapper::map(
+            array_filter($raw['/backupObjects'] ?? [], fn($r) => is_array($r) && !isset($r['_check'])),
+            ObjectMapper::newestPoints(array_filter($raw['/restorePoints'] ?? [], fn($r) => is_array($r))),
+            array_column(array_filter($raw['/backups'] ?? [], fn($r) => is_array($r)), 'name', 'id')
+        );
         return ['raw' => $raw, 'objects' => $objects, 'errors' => $errors];
     }
 
@@ -421,30 +421,38 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
     {
         $raw   = [];
         $errors = [];
-        $firstId = '';
-        // First id comes from /sessions?typeFilter=BackupJob (the first page already fetched in probe(),
-        // but here we read it standalone as the audit probe).
-        list($sRaw, $sErr) = $this->probeEndpoint('/sessions', ['typeFilter' => 'BackupJob', 'limit' => $limit]);
-        $raw['/sessions'] = $sRaw;
+        $params = ['limit' => $limit];
+        if ($search !== '') {
+            $params['nameFilter'] = '*' . $search . '*';
+        }
+        // Sessions: separate keys for backup jobs and copy jobs.
+        list($sRaw, $sErr) = $this->probeEndpoint('/sessions', ['typeFilter' => 'BackupJob'] + $params, $limit, self::PROBE_REQUIRED['/sessions']);
+        $raw['/sessions (BackupJob)'] = $sRaw;
         if ($sErr !== '') {
             $errors[] = $sErr;
-        } elseif (isset($sRaw[0]['id'])) {
-            $firstId = (string) $sRaw[0]['id'];
         }
-        list($cRaw, $cErr) = $this->probeEndpoint('/sessions', ['typeFilter' => 'BackupCopyJob', 'limit' => $limit]);
-        $raw['/sessions'] = $cRaw;
+        list($cRaw, $cErr) = $this->probeEndpoint('/sessions', ['typeFilter' => 'BackupCopyJob'] + $params, $limit, self::PROBE_REQUIRED['/sessions/{id}/taskSessions']);
+        $raw['/sessions (BackupCopyJob)'] = $cRaw;
         if ($cErr !== '') {
             $errors[] = $cErr;
         }
+        // First session id: the first row that carries an id (not the _check status row).
+        $firstId = '';
+        foreach (($raw['/sessions (BackupJob)'] ?? []) as $row) {
+            if (is_array($row) && isset($row['id']) && $row['id'] !== '') {
+                $firstId = (string) $row['id'];
+                break;
+            }
+        }
         if ($firstId !== '') {
-            list($tRaw, $tErr) = $this->probeEndpoint('/sessions/' . rawurlencode($firstId) . '/taskSessions', [], $limit);
+            list($tRaw, $tErr) = $this->probeEndpoint('/sessions/' . rawurlencode($firstId) . '/taskSessions', [], $limit, self::PROBE_REQUIRED['/sessions/{id}/taskSessions']);
             $raw['/sessions/{id}/taskSessions'] = $tRaw;
             if ($tErr !== '') {
                 $errors[] = $tErr;
             }
         }
         foreach (['/authorization/events', '/malwareDetection/events', '/backupInfrastructure/repositories/states'] as $path) {
-            list($r, $err) = $this->probeEndpoint($path, [], $limit);
+            list($r, $err) = $this->probeEndpoint($path, [], $limit, self::PROBE_REQUIRED[$path]);
             $raw[$path] = $r;
             if ($err !== '') {
                 $errors[] = $err;
@@ -455,8 +463,10 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
 
     /**
      * Probe one endpoint: returns (raw rows with _check prepended, error line or '').
+     * When $required (dot paths) is given, the first data row is checked and a missing
+     * path yields an 'unexpected shape: missing ...' _check line.
      */
-    private function probeEndpoint(string $path, array $params, int $limit = 5000): array
+    private function probeEndpoint(string $path, array $params, int $limit = 5000, ?array $required = null): array
     {
         $params = $params + ['limit' => $limit];
         try {
@@ -465,6 +475,12 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
                 $rows[0] = ['_check' => 'OK'];
             } else {
                 array_unshift($rows, ['_check' => 'OK']);
+                if ($required !== null && isset($rows[1])) {
+                    $miss = Shape::missing($rows[1], $required);
+                    if ($miss !== []) {
+                        $rows[0]['_check'] = 'unexpected shape: missing ' . implode(', ', $miss);
+                    }
+                }
             }
             return [array_map([Probe::class, 'redact'], $rows), ''];
         } catch (ApiError $e) {

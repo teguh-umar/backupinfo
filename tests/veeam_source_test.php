@@ -19,6 +19,7 @@ require BI_ROOT . '/src/Veeam/Client.php';
 require BI_ROOT . '/src/Veeam/EventMapper.php';
 require BI_ROOT . '/src/Veeam/ObjectMapper.php';
 require BI_ROOT . '/src/Veeam/RunMapper.php';
+require BI_ROOT . '/src/Veeam/Shape.php';
 require BI_ROOT . '/src/Veeam/TargetMapper.php';
 require BI_ROOT . '/src/Veeam/VeeamSource.php';
 require BI_ROOT . '/src/Probe.php';
@@ -268,6 +269,73 @@ $rpCalls = count(array_filter($t->calls, static fn (array $c): bool => str_conta
 check('fetch: restorePoints stops once all names seen (1 page)', $rpCalls === 1, json_encode(['calls' => $rpCalls]));
 check('fetch: both objects get lastBackup', $objs[0]->lastBackup === Time::epoch('2026-11-01T00:00:00Z')
     && $objs[1]->lastBackup === Time::epoch('2026-11-01T01:00:00Z'));
+
+// --- probe(): objects from /backupObjects, shape check on /backups
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/backupObjects', vpage([
+    ['id' => 'o1', 'name' => 'vm-app-01', 'type' => 'VM', 'restorePointsCount' => 7],
+    ['id' => 'o2', 'name' => 'vm-db-01', 'type' => 'VM', 'restorePointsCount' => 0],
+], 2, 0));
+$t->queue('GET /api/v1/restorePoints', vpage([
+    ['id' => 'rp1', 'name' => 'vm-app-01', 'creationTime' => '2026-11-01T00:00:00Z', 'backupId' => 'b1'],
+], 1, 0));
+$t->queue('GET /api/v1/backups', vpage([
+    ['id' => 'b1', 'name' => 'JOB-DAILY'],
+], 1, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$p = $src->probe(5);
+$pnames = array_map(fn($o) => $o->name, $p['objects']);
+check('probe: objects from /backupObjects names', $pnames === ['vm-app-01', 'vm-db-01'], json_encode($pnames));
+check('probe: object lastBackup from newest restore point', $p['objects'][0]->lastBackup === Time::epoch('2026-11-01T00:00:00Z'));
+check('probe: object jobName from /backups id', $p['objects'][0]->jobName === 'JOB-DAILY');
+check('probe: object restorePoints', $p['objects'][0]->restorePoints === 7);
+
+// --- probe(): /backups row without id -> unexpected shape: missing id
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/backupObjects', vpage([], 0, 0));
+$t->queue('GET /api/v1/restorePoints', vpage([], 0, 0));
+$t->queue('GET /api/v1/backups', vpage([['name' => 'JOB-NOID']], 1, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$p = $src->probe(5);
+check('probe: /backups row without id -> unexpected shape: missing id',
+    $p['raw']['/backups'][0]['_check'] === 'unexpected shape: missing id', json_encode($p['raw']['/backups']));
+
+// --- probeAudit(): both session keys present when both endpoints answered
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/backupObjects', vpage([], 0, 0));
+$t->queue('GET /api/v1/restorePoints', vpage([], 0, 0));
+$t->queue('GET /api/v1/backups', vpage([], 0, 0));
+$t->queue('GET /api/v1/sessions', vpage([
+    ['id' => 's1', 'name' => 'JOB-1', 'jobId' => 'j1', 'state' => 'Stopped', 'result' => ['result' => 'Success']],
+], 1, 0));
+$t->queue('GET /api/v1/sessions', vpage([
+    ['id' => 's2', 'name' => 'COPY-1', 'jobId' => 'j2', 'state' => 'Stopped', 'result' => ['result' => 'Success']],
+], 1, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$pa = $src->probeAudit(5);
+check('probeAudit: /sessions (BackupJob) key present', isset($pa['raw']['/sessions (BackupJob)']));
+check('probeAudit: /sessions (BackupCopyJob) key present', isset($pa['raw']['/sessions (BackupCopyJob)']));
+
+// --- probeAudit(): task-session key present when /sessions has a row
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/backupObjects', vpage([], 0, 0));
+$t->queue('GET /api/v1/restorePoints', vpage([], 0, 0));
+$t->queue('GET /api/v1/backups', vpage([], 0, 0));
+$t->queue('GET /api/v1/sessions', vpage([
+    ['id' => 's1', 'name' => 'JOB-1', 'jobId' => 'j1', 'state' => 'Stopped', 'result' => ['result' => 'Success']],
+], 1, 0));
+$t->queue('GET /api/v1/sessions/s1/taskSessions', vpage([
+    ['name' => 'vm-app-01', 'result' => ['result' => 'Success']],
+], 1, 0));
+$t->queue('GET /api/v1/sessions', vpage([], 0, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$pa = $src->probeAudit(5);
+check('probeAudit: /sessions/{id}/taskSessions key present when /sessions has a row',
+    isset($pa['raw']['/sessions/{id}/taskSessions']));
 
 done();
 
