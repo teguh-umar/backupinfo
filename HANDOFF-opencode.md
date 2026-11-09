@@ -268,4 +268,4 @@ These were decided by the user, or by the owner in the plan:
 | R5 | 837bff0 | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php | orderColumn/orderAsc for /sessions unconfirmed in 1.3-rev2 reference; paging unordered |
 | R6 | b633bf6 | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php | orderColumn/orderAsc for /sessions and /restorePoints unconfirmed in 1.3-rev2 reference; paging unordered |
 | R7 | 8af241a | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php, tests/veeam_probe_test.php (deleted) | PROBE_REQUIRED shape check covers all probe endpoints |
-| R8 | | | | |
+| R8 | 6f0ceda | SUITES OK | src/Veeam/TargetMapper.php, src/Veeam/RunMapper.php, src/RestoreTest.php, src/Veeam/Client.php, src/Source/Registry.php, install/install.php, tests/* | orderColumn/orderAsc for /sessions unconfirmed in 1.3-rev2 reference (paging unordered); dedupe target types not confirmed (left as '') |
