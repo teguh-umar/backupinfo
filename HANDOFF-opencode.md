@@ -261,7 +261,7 @@ These were decided by the user, or by the owner in the plan:
 
 | Item | Commit | Last test line | Failing test seen first (name) | Deviations / unconfirmed values |
 |---|---|---|---|---|
-| R1 | | | | |
+| R1 | b178d61 | SUITES OK | gapsFor: veeam targets gives one gap | none |
 | R2 | | | | |
 | R3 | | | | |
 | R4 | | | | |

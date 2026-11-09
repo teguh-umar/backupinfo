@@ -103,52 +103,64 @@ class Connection extends CommonDBTM
 
         $typeValue = (string) ($this->fields['type'] ?? Registry::DEFAULT_TYPE);
         $authValue = (string) ($this->fields['auth_mode'] ?? Registry::defaults($typeValue)['auth_mode'] ?? 'api_key');
-        echo '<tr class="tab_bg_1"><td data-bi-field="name">' . __('Name') . '</td><td data-bi-field="name">';
+
+        // data-bi-field only on per-type fields (the union of every type's FORM_FIELDS). Shared
+        // fields (name, is_active, type, comment) keep no attribute so they are never hidden.
+        $perTypeFields = [];
+        foreach (Registry::types() as $type => $label) {
+            $perTypeFields = array_values(array_unique(array_merge($perTypeFields, Registry::formFields($type))));
+        }
+        $biField = function (string $f) use ($perTypeFields): string {
+            return in_array($f, $perTypeFields, true) ? ' data-bi-field="' . $f . '"' : '';
+        };
+
+        echo '<tr class="tab_bg_1"><td' . $biField('name') . '>' . __('Name') . '</td><td' . $biField('name') . '>';
         echo Html::input('name', ['value' => $this->fields['name'] ?? '']);
-        echo '</td><td data-bi-field="is_active">' . __('Active') . '</td><td data-bi-field="is_active">';
+        echo '</td><td' . $biField('is_active') . '>' . __('Active') . '</td><td' . $biField('is_active') . '>';
         Dropdown::showYesNo('is_active', $this->fields['is_active'] ?? 1);
         echo '</td></tr>';
 
-        echo '<tr class="tab_bg_1"><td data-bi-field="type">' . __('Type') . '</td><td data-bi-field="type">';
+        echo '<tr class="tab_bg_1"><td' . $biField('type') . '>' . __('Type') . '</td><td' . $biField('type') . '>';
         Dropdown::showFromArray('type', Registry::types(), ['value' => $typeValue]);
-        echo '</td><td data-bi-field="verify_tls">' . __('Verify TLS certificate', 'backupinfo') . '</td><td data-bi-field="verify_tls">';
+        echo '</td><td' . $biField('verify_tls') . '>' . __('Verify TLS certificate', 'backupinfo') . '</td><td' . $biField('verify_tls') . '>';
         Dropdown::showYesNo('verify_tls', $this->fields['verify_tls'] ?? 1);
         echo '</td></tr>';
 
-        echo '<tr class="tab_bg_1"><td data-bi-field="host">' . __('Host', 'backupinfo') . '</td><td data-bi-field="host">';
+        echo '<tr class="tab_bg_1"><td' . $biField('host') . '>' . __('Host', 'backupinfo') . '</td><td' . $biField('host') . '>';
         echo Html::input('host', ['value' => $this->fields['host'] ?? '', 'size' => 60]);
-        echo '</td><td data-bi-field="auth_mode">' . __('Authentication', 'backupinfo') . '</td><td data-bi-field="auth_mode">';
+        echo '</td><td' . $biField('auth_mode') . '>' . __('Authentication', 'backupinfo') . '</td><td' . $biField('auth_mode') . '>';
         Dropdown::showFromArray('auth_mode', [
             'api_key' => __('API key', 'backupinfo'),
             'login'   => __('Username and password', 'backupinfo'),
         ], ['value' => $authValue]);
         echo '</td></tr>';
 
-        echo '<tr class="tab_bg_1"><td data-bi-field="api_key">' . __('API key', 'backupinfo') . '</td><td data-bi-field="api_key">';
+        echo '<tr class="tab_bg_1"><td' . $biField('api_key') . '>' . __('API key', 'backupinfo') . '</td><td' . $biField('api_key') . '>';
         $this->secretInput('api_key', 'API key');
-        echo '</td><td data-bi-field="username">' . __('Username', 'backupinfo') . '</td><td data-bi-field="username">';
+        echo '</td><td' . $biField('username') . '>' . __('Username', 'backupinfo') . '</td><td' . $biField('username') . '>';
         echo Html::input('username', ['value' => $this->fields['username'] ?? '']);
         echo '</td></tr>';
 
-        echo '<tr class="tab_bg_1"><td data-bi-field="password">' . __('Password') . '</td><td data-bi-field="password">';
+        echo '<tr class="tab_bg_1"><td' . $biField('password') . '>' . __('Password') . '</td><td' . $biField('password') . '>';
         $this->secretInput('password', 'Password');
-        echo '</td><td data-bi-field="api_version">' . __('API version', 'backupinfo') . '</td><td data-bi-field="api_version">';
+        echo '</td><td' . $biField('api_version') . '>' . __('API version', 'backupinfo') . '</td><td' . $biField('api_version') . '>';
         echo Html::input('api_version', [
             'value'        => $this->fields['api_version'] ?? '',
             'placeholder'  => '1.3-rev2',
         ]);
         echo '</td></tr>';
 
-        echo '<tr class="tab_bg_1"><td data-bi-field="comment">' . __('Comments') . '</td><td colspan="3" data-bi-field="comment">';
+        echo '<tr class="tab_bg_1"><td' . $biField('comment') . '>' . __('Comments') . '</td><td colspan="3"' . $biField('comment') . '>';
         echo "<textarea name='comment' cols='80' rows='4'>" . htmlescape($this->fields['comment'] ?? '') . "</textarea>";
         echo '</td></tr>';
 
         // Show/hide per-type form fields. JSON of type => field list; cells outside the chosen
-        // type's list get d-none and their inputs disabled (not posted).
-        $fieldsJson = htmlspecialchars(json_encode(array_map(
+        // type's list get d-none and their inputs disabled (not posted). JSON_HEX_* keeps the
+        // JSON valid inside a <script> block without htmlspecialchars (which would break JS).
+        $fieldsJson = json_encode(array_map(
             static fn(string $t): array => Registry::formFields($t),
             Registry::types()
-        )));
+        ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
         echo "<script>
             (function(){
                 var fields = {$fieldsJson};
@@ -161,11 +173,12 @@ class Connection extends CommonDBTM
                         var f = cell.getAttribute('data-bi-field');
                         var on = show.indexOf(f) >= 0;
                         cell.classList.toggle('d-none', !on);
-                        var inp = cell.querySelector('input, select, textarea');
-                        if (inp) inp.disabled = !on;
+                        cell.querySelectorAll('input, select, textarea').forEach(function(inp){
+                            inp.disabled = !on;
+                        });
                     });
                 }
-                typeSel.addEventListener('change', apply);
+                $(typeSel).on('change', apply);
                 apply();
             })();
         </script>";
