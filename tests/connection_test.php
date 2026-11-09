@@ -40,7 +40,7 @@ $r = Connection::prepareSecrets(['api_key' => ''], [], $enc);
 check('add with empty secret stores empty', ($r['api_key'] ?? '') === '');
 
 // Registry.
-check('registry only vinchin', Registry::types() === ['vinchin' => 'Vinchin']);
+check('types() has vinchin and veeam', Registry::types() === ['vinchin' => 'Vinchin', 'veeam' => 'Veeam B&R 13 (preview, not verified on a server)']);
 
 // Source-string checks on the GLPI-dependent parts.
 $src = (string) file_get_contents(BI_ROOT . '/src/Connection.php');

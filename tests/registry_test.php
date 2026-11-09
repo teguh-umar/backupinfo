@@ -19,21 +19,32 @@ require BI_ROOT . '/src/Vinchin/ItemMapper.php';
 require BI_ROOT . '/src/Vinchin/JobHistoryMapper.php';
 require BI_ROOT . '/src/Vinchin/ScheduleMapper.php';
 require BI_ROOT . '/src/Vinchin/VinchinSource.php';
+require BI_ROOT . '/src/Veeam/Client.php';
+require BI_ROOT . '/src/Veeam/VeeamSource.php';
 
 use GlpiPlugin\Backupinfo\Source\BackupObject;
 use GlpiPlugin\Backupinfo\Source\Registry;
+use GlpiPlugin\Backupinfo\Veeam\VeeamSource;
 use GlpiPlugin\Backupinfo\Vinchin\VinchinSource;
 
 // Registry types / labels / per-type facts.
-check('types() is vinchin only', Registry::types() === ['vinchin' => 'Vinchin']);
-check('labels()', Registry::labels() === ['vinchin' => 'Vinchin']);
+check('types() has vinchin and veeam', Registry::types() === ['vinchin' => 'Vinchin', 'veeam' => 'Veeam B&R 13 (preview, not verified on a server)']);
+check('labels()', Registry::labels() === ['vinchin' => 'Vinchin', 'veeam' => 'Veeam']);
 check('DEFAULT_TYPE is vinchin', Registry::DEFAULT_TYPE === 'vinchin');
 check('formFields(vinchin) === VinchinSource::FORM_FIELDS', Registry::formFields('vinchin') === VinchinSource::FORM_FIELDS);
 check('formFields(unknown) === []', Registry::formFields('nope') === []);
 check('defaults(vinchin)', Registry::defaults('vinchin') === ['auth_mode' => 'api_key']);
 check('gaps(vinchin) === []', Registry::gaps('vinchin') === []);
 
-// Transport lives in a brand-neutral namespace; the Vinchin files are gone.
+// Veeam type is registered
+check('types() has veeam', Registry::types()['veeam'] === 'Veeam B&R 13 (preview, not verified on a server)');
+check('labels() has veeam', Registry::labels()['veeam'] === 'Veeam');
+check('formFields(veeam) has api_version, no api_key', in_array('api_version', Registry::formFields('veeam'), true) && !in_array('api_key', Registry::formFields('veeam'), true));
+check('defaults(veeam)', Registry::defaults('veeam') === ['auth_mode' => 'login', 'api_version' => '1.3-rev2']);
+check('gaps(veeam)[targets] starts with tape', str_starts_with(Registry::gaps('veeam')['targets'] ?? '', 'tape'));
+
+// Unknown type throws
+$decrypt = fn(string $s): string => $s;
 check('transport is brand-neutral', is_subclass_of(\GlpiPlugin\Backupinfo\Http\CurlTransport::class, \GlpiPlugin\Backupinfo\Http\Transport::class) && !file_exists(BI_ROOT . '/src/Vinchin/Transport.php'));
 
 // Transport lives in a brand-neutral namespace; the Vinchin files are gone.
@@ -63,6 +74,10 @@ $seen = [];
 $src = Registry::create($vinchinRow, function (string $s) use (&$seen): string { $seen[] = $s; return 'dec'; });
 check('create() builds a BackupSource for vinchin', $src instanceof \GlpiPlugin\Backupinfo\Source\BackupSource);
 check('create() decrypts the api key', in_array('ENC', $seen, true));
+
+$veeamRow = ['type' => 'veeam', 'host' => 'vbr.example.test', 'username' => 'u', 'password' => 'ENC', 'api_version' => '1.3-rev2', 'verify_tls' => 1];
+$srcV = Registry::create($veeamRow, fn(string $s): string => $s);
+check('create() builds a VeeamSource for veeam', $srcV instanceof VeeamSource);
 
 // BackupObject carries every field from the contract.
 $obj = new BackupObject(

@@ -5,19 +5,24 @@ namespace GlpiPlugin\Backupinfo\Source;
 use GlpiPlugin\Backupinfo\Vinchin\Client;
 use GlpiPlugin\Backupinfo\Http\CurlTransport;
 use GlpiPlugin\Backupinfo\Vinchin\VinchinSource;
+use GlpiPlugin\Backupinfo\Veeam\Client as VeeamClient;
+use GlpiPlugin\Backupinfo\Veeam\VeeamSource;
 
 final class Registry
 {
     /** @return array<string, string> source type => label (shown in the Type dropdown) */
     public static function types(): array
     {
-        return ['vinchin' => 'Vinchin'];
+        return [
+            'vinchin' => 'Vinchin',
+            'veeam'   => 'Veeam B&R 13 (preview, not verified on a server)',
+        ];
     }
 
     /** @return array<string, string> source type => short label (used in media text) */
     public static function labels(): array
     {
-        return ['vinchin' => 'Vinchin'];
+        return ['vinchin' => 'Vinchin', 'veeam' => 'Veeam'];
     }
 
     /** Default source type for new connection records. */
@@ -61,6 +66,7 @@ final class Registry
     {
         return match ($type) {
             'vinchin' => \GlpiPlugin\Backupinfo\Vinchin\VinchinSource::class,
+            'veeam'   => \GlpiPlugin\Backupinfo\Veeam\VeeamSource::class,
             default   => null,
         };
     }
@@ -91,6 +97,16 @@ final class Registry
                 ),
                 (($connectionRow['auth_mode'] ?? $defaults['auth_mode'] ?? 'api_key') === 'login'),
                 $vmNames ?? static fn(): array => []
+            ),
+            'veeam' => new VeeamSource(
+                new VeeamClient(
+                    (string) ($connectionRow['host'] ?? ''),
+                    new CurlTransport(),
+                    (string) ($connectionRow['username'] ?? ''),
+                    $decrypt((string) ($connectionRow['password'] ?? '')),
+                    (string) ($connectionRow['api_version'] ?? '1.3-rev2'),
+                    !empty($connectionRow['verify_tls'] ?? 1)
+                )
             ),
             default => throw new \InvalidArgumentException("Unknown backup source type: {$type}"),
         };
