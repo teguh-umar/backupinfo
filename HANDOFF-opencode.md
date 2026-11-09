@@ -265,7 +265,7 @@ These were decided by the user, or by the owner in the plan:
 | R2 | cdfe493 | SUITES OK | src/Connection.php, tests/connection_test.php | none |
 | R3 | 48e9405 | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php | orderColumn/orderAsc for /sessions unconfirmed in 1.3-rev2 reference; paging unordered |
 | R4 | 39d05d7 | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php | none |
-| R5 | | | | |
-| R6 | | | | |
-| R7 | | | | |
+| R5 | 837bff0 | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php | orderColumn/orderAsc for /sessions unconfirmed in 1.3-rev2 reference; paging unordered |
+| R6 | b633bf6 | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php | orderColumn/orderAsc for /sessions and /restorePoints unconfirmed in 1.3-rev2 reference; paging unordered |
+| R7 | 8af241a | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php, tests/veeam_probe_test.php (deleted) | PROBE_REQUIRED shape check covers all probe endpoints |
 | R8 | | | | |
