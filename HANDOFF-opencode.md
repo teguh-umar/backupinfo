@@ -100,6 +100,148 @@ These were decided by the user, or by the owner in the plan:
 - Stop after Task 10, and tell the user "handoff updated".
 - The owner checks `git log`, re-runs the suite and reviews each commit against the plan. A hash or pass count that is not in the tree counts as not done.
 
+## 8. Review round 1 (owner, 2026-11-09): REWORK before 0.5.0-rc1
+
+**Status.** I re-ran the suite at `16735fd` and it gives `SUITES OK`. Tasks 1, 2, 3, 6 and 7 are accepted, with the small fixes below.
+
+**What is wrong.** The tests pass, but the code does not do what the plan says in several places, and those places have no test. **`tests/veeam_source_test.php` (Task 9 Step 1) was never written**, yet §9 says "none" for deviations. That is the same failure as last time: a task marked done without its tests.
+
+**What to do.**
+- Fix the items below in order.
+- **Write the missing tests first, and run each one to see it fail before you fix it.**
+- Make one commit per item group (R1, R2, …), with the message `fix(<area>): <what>`.
+- Log each group in §9b.
+
+### R1 – Audit gaps never appear (Task 5, `src/AuditData.php`)
+
+`foreach (Registry::gaps($type)[$key] ?? [] as $sentence)` loops over a **string**: PHP warns and appends nothing, so no section ever shows a gap.
+
+- **Fix:** take the one sentence as a string and append it when it is not `''`.
+- **Test:** add a pure helper that `AuditData::section` uses, and test it. Name it `AuditPage::gapsFor(array $connections, string $key): array`, where `$connections` is a `list<array{name, type}>`. The test:
+  - a `veeam` connection gives one gap for `targets`;
+  - a `vinchin` connection gives none.
+
+### R2 – The connection form is broken (Task 4, `src/Connection.php`)
+
+1. **`$fieldsJson` goes through `htmlspecialchars` inside `<script>`.** The JSON becomes `{&quot;vinchin&quot;…`, a JS syntax error, so the script never runs.
+   - **Fix:** use `json_encode($map, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)` with no `htmlspecialchars`.
+2. **The script would hide and disable fields every type needs.** Once item 1 is fixed, the cells marked `name`, `is_active`, `type` and `comment` are in no `FORM_FIELDS` list, so the script would hide and disable the Name, Active, **Type** and Comments fields, and none of them could be saved.
+   - **Fix:** put `data-bi-field` only on the per-type fields, which are the ones in some type's `FORM_FIELDS`.
+3. **GLPI renders the Type dropdown with select2,** which fires jQuery `change`, not a native event, so `addEventListener('change')` never fires.
+   - **Fix:** use `$(typeSel).on('change', apply)`. jQuery is loaded on GLPI pages.
+4. **The script disables only the first input of a cell** (`querySelector`). The `_clear_password` checkbox stays enabled.
+   - **Fix:** use `querySelectorAll`.
+5. **Test** in `connection_test.php`:
+   - the source has no `htmlspecialchars(json_encode`;
+   - `data-bi-field="name"`, `"type"` and `"comment"` are absent;
+   - the script uses `$(typeSel).on('change'`.
+
+### R3 – `VeeamSource::runs()` reads page 1 over and over (Task 9)
+
+- **Bug:** the loop calls `paged('/sessions', …, $pageSize, $pageSize)` on every iteration with **no `skip`**. It reads the first page `$maxPages` times and never reaches older runs, so the history backfill is broken.
+- **Bug:** `$pageKnown` receives the ids of **all** sessions on the page. The plan says it gets only the ids of runs that `RunMapper::map` accepted, so a page holding only running sessions passes `[]`.
+- **Fix:**
+  - Use `Client::get('/sessions', ['typeFilter' => …, 'skip' => $page * $pageSize, 'limit' => $pageSize] + order)` per page, reading `data` and `pagination.total`.
+  - Stop when the page is empty, when `skip >= total`, or when `$pageKnown(mapped ids)` is true.
+  - Remove the private `pageKnown` wrapper.
+- **Order:** confirm the `orderColumn`/`orderAsc` values for `/sessions` in the 1.3-rev2 reference. If you cannot, do not send them, and log that in §9b.
+- **Tests:**
+  - 3 pages of 2 sessions, where `$pageKnown` is true only for page 2: the requests use skip 0 and 2, and page 3 is never requested.
+  - A page of [Stopped, Working, Stopped] gives 2 runs, and `$pageKnown` receives exactly the 2 stopped ids.
+  - A page holding only Working sessions gives `$pageKnown([])`.
+
+### R4 – Failure reasons never read the task sessions (Task 9)
+
+- **Bug:** `runs()` caches each **session** in `sessionCache` under its id. `failureReasons()` then sees `isset($this->sessionCache[$uuid])` and skips the task-session read, so task-level reasons are never fetched.
+- **Bug:** it also caches **task** rows in the same array, keyed by task id, and then treats the session itself as a "task".
+- **Fix:**
+  - Use two caches: `sessions[id] => raw session` and `tasks[sessionId] => list<raw task>`.
+  - `failureReasons` reads `/sessions/{id}/taskSessions` for at most `MAX_TASK_CALLS` failed runs, newest first by `start` (fix the `usort`: compare `$b->start` with `$a->start`, with null last).
+  - It stores the tasks in `tasks[id]` and gives `RunMapper::reason(tasks[id] ?? [], sessions[id] ?? [])`.
+  - The first `ApiError` stops further reads, and the remaining runs get the session message.
+- **`runItems($id)`:**
+  - It answers from `tasks[$id]` with **no HTTP call** when that entry exists.
+  - Otherwise it reads, **inside try/catch**. Today the cached branch can throw, and the interface says it never throws.
+- **Tests:** the four in plan Task 9 Step 1 under "Reasons":
+  - the reason comes from the Failed task;
+  - `runItems` makes no second call;
+  - 101 failed runs give ≤ 100 task calls;
+  - a 403 on the first task call gives one error and no further task calls.
+
+### R5 – `copyRuns()` drops every row (Task 9)
+
+- **Bug:** `$ct < Time::epoch($from)` compares a `Y-m-d H:i:s` **string** with an **int**. In PHP 8 that is a string comparison (`"2026…" > "17…"`), so every session is skipped.
+- **Fix:**
+  - Compare epochs: `Time::epoch($job['creationTime'])` against `Time::epoch($from)` and `Time::epoch($to)`.
+  - Read newest first with paging, and stop paging once a page is older than `$from`. If the order cannot be confirmed, page without it and filter.
+  - Cap task-session calls at 50 per call, as in the plan.
+- **Test:**
+  - Two copy sessions, one inside the window and one outside, each with 2 tasks: the result is 2 `copy` events, both from the session inside the window.
+  - With 60 sessions in the window, at most 50 task calls are made.
+
+### R6 – `fetch()` (Task 9)
+
+1. **`logout()` runs in a `finally` right after `/backupObjects`.** The next two reads then log in again, and nothing logs out at the end.
+   - **Fix:** wrap the whole method in one try/finally, with logout at the end.
+2. **The `/restorePoints` stop callback checks `$newest`,** which is filled only after paging, so it never fires and up to 5000 rows are read every sync.
+   - **Fix:** fold each page into `$newest` inside the callback (`$newest += ObjectMapper::newestPoints($page)`, keeping the newer of two). Then check `allNamesSeen`.
+3. **`/backups` rows have `id`, not `backupId`.** `backupId` is the field on the *restore point*. As written, `jobName` is always `''`.
+   - **Fix:** key by `$b['id']`, and confirm in the reference whether the job name is `name` or `jobName`.
+4. **Page size:** use 200, Veeam's default, not 5000. Keep `maxRows` 5000.
+5. **Tests:** the four in plan Task 9 Step 1 under "Fetch", plus:
+   - exactly one login and one logout per `fetch()`;
+   - `jobName` `JOB-DAILY` comes from `/backups` `id`.
+
+### R7 – Probe (Task 10)
+
+1. **`probe()` builds `objects` from the `/sessions` rows** (`ObjectMapper::map($sessions, …)`).
+   - **Fix:** build them from the `/backupObjects` rows, `/restorePoints` and `/backups`, as `fetch()` does. Strip the `_check` rows first.
+2. **In `probeAudit()`:**
+   - The `BackupCopyJob` read **overwrites** `$raw['/sessions']`. Key the two reads `'/sessions (BackupJob)'` and `'/sessions (BackupCopyJob)'`.
+   - `$firstId` is read from `$sRaw[0]`, which is the `_check` row, so the task sessions are never probed. Take the first row that has an `id`.
+3. **The shape check covers `/sessions` only.** The plan asks for every endpoint.
+   - **Fix:** use a `REQUIRED` map, `path => list of fields the mapper reads`:
+     - `/backupObjects`: `id`, `name`, `restorePointsCount`
+     - `/restorePoints`: `name`, `creationTime`, `backupId`
+     - `/backups`: `id`, `name`
+     - sessions: `id`, `name`, `state`, `creationTime`, `result.result`
+     - task sessions: `name`, `result.result`
+     - `/authorization/events`: `id`, `creationTime`, `state`
+     - `/malwareDetection/events`: `id`, `detectionTimeUtc`, `severity`
+     - repository states: `name`, `type`, `capacityGB`, `freeGB`, `usedSpaceGB`, `isOnline`
+   - Check the first data row against it.
+4. **Tests:**
+   - A `/backups` row without `id` gives `unexpected shape: missing id` on `/backups`.
+   - Both session keys are present.
+   - The task-session key is present when `/sessions` has a row.
+   - `objects` holds the `/backupObjects` names.
+
+### R8 – Smaller fixes
+
+- **`Registry::create` for `veeam`:** the stored `api_version` defaults to `''`, which sends an empty `x-api-version` (HTTP 400).
+  - **Fix:** `trim((string) ($row['api_version'] ?? '')) ?: '1.3-rev2'`.
+  - **Test:** in `registry_test`, with a fake transport or reflection, a row with `api_version` `''` gives the header `1.3-rev2`.
+- **`TargetMapper::kind` cloud list:**
+  - `veamdatacloudvault` and `veamvault` are misspelled. Use `veeamdatacloudvault` and `veeamvault`.
+  - The match on `'dedupe'` never matches a real type name. Use the dedupe type names from the 1.3-rev2 `ERepositoryType` enum. If you cannot confirm them, leave `''` and log it.
+  - **Tests:** `VeeamVault` and `VeeamDataCloudVault` give `cloud`.
+- **`TargetMapper::online`:** only a real boolean maps to `yes`/`no`. A string or anything else gives `''`.
+  - **Test:** the string `'false'` gives `''`.
+- **`RunMapper::duration(?string, ?string)`:** a non-string time would be a TypeError. Take `mixed`.
+  - **Test:** an int `creationTime` gives `durationS` null and no error.
+- **`RestoreTest::showForm`:** the source line for an imported row used to say "Imported from Vinchin (read-only)" and now says "Vinchin". That is a Vinchin page text change, which goal 2 forbids. Restore the old wording for imported rows, as `sprintf(__('Imported from %s (read-only)'), label)`.
+- **`Veeam\Client` guard:** the allowlist sits in `request()`, but login, refresh and logout call `sendRequest()` directly, so the allowlist is never checked on the path that actually POSTs.
+  - **Fix:** move the method and route check into `sendRequest()`, against `parse_url($url, PHP_URL_PATH)`. Every send goes through it.
+  - The existing guard tests must still pass.
+  - **Test:** a POST through `sendRequest` to `/api/v1/jobs/x/start` throws, with no transport call.
+- **`install.php`:** `api_version` is added twice, once in `$added` and once in a separate `fieldExists` block. Keep the `$added` entry and delete the extra block.
+
+### Rules for this round
+
+- Rules §3 and §5 apply.
+- Do not touch Tasks 1–3, 6 or 7 beyond what R8 names.
+- Record every deviation in §9b, including any enum or parameter value you could not confirm in the reference. "none" is acceptable only when it is true.
+
 ## 9. Progress log (OpenCode fills this in)
 
 | Task | Commit | Last test line | Files touched | Deviations / unverified / questions |
@@ -113,4 +255,17 @@ These were decided by the user, or by the owner in the plan:
 | 7 Run and task mapping | b3cbced | SUITES OK | src/Veeam/RunMapper.php, tests/veeam_mapper_test.php | none |
 | 8 Objects, targets, events mapping | 12a3920 | SUITES OK | src/Veeam/ObjectMapper.php, src/Veeam/TargetMapper.php, src/Veeam/EventMapper.php, tests/veeam_mapper_test.php | none |
 | 9 VeeamSource, Registry entry | a143b81 | SUITES OK | src/Veeam/VeeamSource.php, src/Source/Registry.php, tests/registry_test.php | none |
-| 10 Veeam Probe | | | | |
+| 10 Veeam Probe (REWORK, see §8) | 16735fd | SUITES OK | src/Veeam/Shape.php, src/Veeam/VeeamSource.php, tests/veeam_probe_test.php | none |
+
+## 9b. Rework log, round 1 (OpenCode fills this in)
+
+| Item | Commit | Last test line | Failing test seen first (name) | Deviations / unconfirmed values |
+|---|---|---|---|---|
+| R1 | | | | |
+| R2 | | | | |
+| R3 | | | | |
+| R4 | | | | |
+| R5 | | | | |
+| R6 | | | | |
+| R7 | | | | |
+| R8 | | | | |
