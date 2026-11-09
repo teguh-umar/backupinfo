@@ -13,6 +13,7 @@ use GlpiPlugin\Backupinfo\Source\ProbeableSource;
 use GlpiPlugin\Backupinfo\Source\Run;
 use GlpiPlugin\Backupinfo\Source\RunHistorySource;
 use GlpiPlugin\Backupinfo\Text;
+use GlpiPlugin\Backupinfo\Vinchin\AlarmJoin;
 
 final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeableSource, PartialFetch, RunHistorySource, AuditSource
 {
@@ -471,6 +472,36 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
             return ['rows' => [], 'error' => $e->getMessage()];
         }
         return ['rows' => array_values(array_filter($rows, static fn($row): bool => is_array($row) && !$older($row))), 'error' => ''];
+    }
+
+    /**
+     * Failure reasons for the failed runs: job alarms back to a day before the oldest failed run,
+     * joined by job name and time. Keys of `reasons` are historyUuid. Never throws.
+     *
+     * @param list<Run> $failedRuns
+     * @return array{reasons: array<string, string>, error: string}
+     */
+    public function failureReasons(array $failedRuns): array
+    {
+        if (($error = $this->ensureLogin()) !== '') {
+            return ['reasons' => [], 'error' => $error];
+        }
+        $alarms = $this->jobAlarms(self::dayBefore($failedRuns));
+        if ($alarms['error'] !== '') {
+            return ['reasons' => [], 'error' => $alarms['error']];
+        }
+        return ['reasons' => AlarmJoin::reasons($failedRuns, $alarms['rows']), 'error' => ''];
+    }
+
+    /**
+     * Start of the day before the oldest failed run's start/finish, as `Y-m-d H:i:s`.
+     *
+     * @param list<Run> $runs
+     */
+    private static function dayBefore(array $runs): string
+    {
+        $times = array_filter(array_map(static fn(Run $r): ?int => ItemMapper::parseTime($r->start ?? $r->finish), $runs));
+        return (string) RunMapper::time(($times === [] ? time() : min($times)) - 86400);
     }
 
     /** Login mode: one login per instance before the first read. Returns an error line, or ''. */

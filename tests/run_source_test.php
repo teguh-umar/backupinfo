@@ -6,7 +6,7 @@ foreach ([
     'Text', 'Source/BackupObject', 'Source/Run', 'Source/BackupSource', 'Source/ProbeableSource',
     'Source/AuditProbeableSource', 'Source/RunHistorySource', 'Source/AuditSource', 'Source/PartialFetch',
     'Vinchin/Signer', 'Http/Transport', 'Vinchin/Client', 'Vinchin/ItemMapper', 'Vinchin/JobHistoryMapper',
-    'Vinchin/ScheduleMapper', 'Vinchin/RunMapper', 'Source/Event', 'Source/Target', 'Vinchin/EventMapper', 'Vinchin/VinchinSource',
+    'Vinchin/AlarmJoin', 'Vinchin/ScheduleMapper', 'Vinchin/RunMapper', 'Source/Event', 'Source/Target', 'Vinchin/EventMapper', 'Vinchin/VinchinSource',
 ] as $f) {
     require BI_ROOT . "/src/$f.php";
 }
@@ -119,5 +119,17 @@ check('jobAlarms: sort alarm_time desc', ($q['sort'] ?? '') === 'alarm_time' && 
 $t = new RouteT();
 $a = src($t)->jobAlarms('2026-10-01 00:00:00');
 check('jobAlarms: refused -> error, no throw', $a['rows'] === [] && $a['error'] !== '');
+
+// --- failureReasons(): job alarms mapped to failed runs, same result AlarmJoin gave before
+$t = new RouteT();
+$t->routes['GET /alarm/job'] = [rows([['alarm_id' => 1, 'alarm_level' => 3, 'description' => 'backup failed', 'job_name' => 'JOB-1', 'alarm_time' => '2026-10-01 01:05:09']])];
+$failed = [
+    new Run('u-failed-1', 'JOB-1', 'j1', '2026-10-01 01:00:00', '2026-10-01 01:05:09', Run::FAILED, 'Failed', '', 0),
+    new Run('u-failed-2', 'JOB-1', 'j1', '2026-10-01 01:00:00', '2026-10-01 01:05:09', Run::FAILED, 'Failed', '', 0),
+];
+$fr = src($t)->failureReasons($failed);
+check('failureReasons: reasons keyed by historyUuid', $fr['reasons']['u-failed-1'] === 'backup failed' && $fr['reasons']['u-failed-2'] === 'backup failed');
+check('failureReasons: error empty', $fr['error'] === '');
+check('failureReasons: alarm endpoint read once', count($t->to('GET', '/alarm/job')) === 1);
 
 done();

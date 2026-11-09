@@ -67,10 +67,10 @@ final class FakeRuns implements RunHistorySource
         }
         return ['items' => $this->items[$historyUuid] ?? [], 'error' => ''];
     }
-    public function jobAlarms(string $sinceTime, int $max = 2000): array
+    public function failureReasons(array $failedRuns): array
     {
-        $this->calls[] = ['alarms', $sinceTime];
-        return ['rows' => $this->alarms, 'error' => ''];
+        $this->calls[] = ['reasons', array_map(static fn(Run $r): string => $r->historyUuid, $failedRuns)];
+        return ['reasons' => ['u-failed' => 'Disk full'], 'error' => ''];
     }
 }
 
@@ -86,22 +86,21 @@ $jobComputers = static fn (string $job): array => mb_strtolower($job) === 'job-1
 
 // --- first run: backfill, oldest inserted first, failed run gets per-VM items and a reason
 $src = new FakeRuns();
-$src->runs = [run('u3', Run::SUCCESS), run('u2', Run::FAILED, 'JOB-1', '2026-10-01 01:00:00', '2026-10-01 01:05:09'), run('u1', Run::SUCCESS, 'JOB-1', '2026-09-30 01:00:00')];
-$src->items['u2'] = [['vm_name' => 'VM-A', 'status' => 'failed', 'error' => 'E1'], ['vm_name' => 'VM-C', 'status' => 'success', 'error' => '']];
-$src->alarms = [['job_name' => 'JOB-1', 'alarm_time' => '2026-10-01 01:05:09', 'description' => 'Failed to <b>prepare</b>']];
+$src->runs = [run('u3', Run::SUCCESS), run('u-failed', Run::FAILED, 'JOB-1', '2026-10-01 01:00:00', '2026-10-01 01:05:09'), run('u1', Run::SUCCESS, 'JOB-1', '2026-09-30 01:00:00')];
+$src->items['u-failed'] = [['vm_name' => 'VM-A', 'status' => 'failed', 'error' => 'E1'], ['vm_name' => 'VM-C', 'status' => 'success', 'error' => '']];
 $store = new MemRunStore();
 $out = (new RunSync())->run(1, $src, $store, $vmToComputer, $jobComputers, 20);
 
 check('first run: 3 new, 1 failed, no errors', $out === ['new' => 3, 'failed' => 1, 'errors' => []], json_encode($out));
-check('oldest inserted first (a crash leaves the newest unknown, so the next run refetches)', $store->order === ['u1', 'u2', 'u3']);
+check('oldest inserted first (a crash leaves the newest unknown, so the next run refetches)', $store->order === ['u1', 'u-failed', 'u3']);
 check('maxPages passed through', $src->calls[0] === ['runs', 20]);
-check('runItems only for the failed run', array_values(array_filter($src->calls, static fn ($c) => $c[0] === 'items')) === [['items', 'u2']]);
-check('alarms read back to a day before the oldest failed run', in_array(['alarms', '2026-09-30 01:00:00'], $src->calls, true));
-check('failed run: reason joined from the alarm', $store->rows['1|u2']['reason'] === 'Failed to prepare');
-check('failed run: per-VM items, VM mapped, unmatched VM kept with 0', $store->rows['1|u2']['items'] === [
+check('runItems only for the failed run', array_values(array_filter($src->calls, static fn ($c) => $c[0] === 'items')) === [['items', 'u-failed']]);
+check('failure reasons come from the source', in_array(['reasons', ['u-failed']], $src->calls, true));
+check('reason comes from the source', $store->rows['1|u-failed']['reason'] === 'Disk full');
+check('failed run: per-VM items, VM mapped, unmatched VM kept with 0', $store->rows['1|u-failed']['items'] === [
     ['computers_id' => 11, 'vm_name' => 'VM-A', 'item_status' => 'failed'],
     ['computers_id' => 0, 'vm_name' => 'VM-C', 'item_status' => 'success'],
-], json_encode($store->rows['1|u2']['items']));
+], json_encode($store->rows['1|u-failed']['items']));
 check('success run: job Computers, status of the run, no reason', $store->rows['1|u3']['items'] === [
     ['computers_id' => 11, 'vm_name' => 'VM-A', 'item_status' => 'success'],
     ['computers_id' => 12, 'vm_name' => 'VM-B', 'item_status' => 'success'],
@@ -179,5 +178,7 @@ check('cron: runs after a successful object sync of a RunHistorySource', str_con
 check('cron: run errors caught, connection status untouched', (bool) preg_match('/catch \(\\\\Throwable \$e\) \{\s*\$line = sprintf\(\'Runs %s/', $cron));
 check('cron: retention purge', str_contains($cron, 'purgeOlderThan('));
 check('cron: page limit from config', str_contains($cron, "'run_pages_max'"));
+
+check('RunSync names no brand', !preg_match('/Vinchin|Veeam/', file_get_contents(BI_ROOT . '/src/Sync/RunSync.php')));
 
 done();

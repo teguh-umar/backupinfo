@@ -104,7 +104,7 @@ These were decided by the user, or by the owner in the plan:
 
 | Task | Commit | Last test line | Files touched | Deviations / unverified / questions |
 |---|---|---|---|---|
-| 1 Neutral HTTP transport | | | | |
+| 1 Neutral HTTP transport | a258575 | SUITES OK | src/Http/Transport.php, src/Http/CurlTransport.php, src/Vinchin/Client.php, src/Source/Registry.php, tests/* (requires + use lines) | none |
 | 2 Failure reasons behind the source | | | | |
 | 3 Verification behind VerifyingSource | | | | |
 | 4 Registry facts, form, api_version | | | | |

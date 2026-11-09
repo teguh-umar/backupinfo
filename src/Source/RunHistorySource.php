@@ -25,9 +25,11 @@ interface RunHistorySource
     public function runItems(string $historyUuid): array;
 
     /**
-     * Job alarms newest first, back to $sinceTime (`Y-m-d H:i:s`), at most $max rows.
+     * Failure reasons for the failed runs. Keys of `reasons` are historyUuid. Never throws;
+     * a refused source gives an error line and empty reasons.
      *
-     * @return array{rows: list<array<string, mixed>>, error: string}
+     * @param list<Run> $failedRuns
+     * @return array{reasons: array<string, string>, error: string}
      */
-    public function jobAlarms(string $sinceTime, int $max = 2000): array;
+    public function failureReasons(array $failedRuns): array;
 }

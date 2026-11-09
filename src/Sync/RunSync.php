@@ -4,9 +4,6 @@ namespace GlpiPlugin\Backupinfo\Sync;
 
 use GlpiPlugin\Backupinfo\Source\Run;
 use GlpiPlugin\Backupinfo\Source\RunHistorySource;
-use GlpiPlugin\Backupinfo\Vinchin\AlarmJoin;
-use GlpiPlugin\Backupinfo\Vinchin\ItemMapper;
-use GlpiPlugin\Backupinfo\Vinchin\RunMapper;
 
 /**
  * Stores the runs a source has that are not stored yet (the ICOFR population). Pure of GLPI classes;
@@ -45,11 +42,11 @@ final class RunSync
         $failed  = array_values(array_filter($new, static fn(Run $r): bool => $r->status === Run::FAILED));
         $reasons = [];
         if ($failed !== []) {
-            $alarms = $source->jobAlarms(self::dayBefore($failed));
-            if ($alarms['error'] !== '') {
-                $out['errors'][] = $alarms['error'];
+            $res = $source->failureReasons($failed);
+            if ($res['error'] !== '') {
+                $out['errors'][] = $res['error'];
             }
-            $reasons = AlarmJoin::reasons($failed, $alarms['rows']);
+            $reasons = $res['reasons'];
         }
 
         // Oldest first: if the run stops half-way, the newest runs stay unknown and the next sync
@@ -86,13 +83,6 @@ final class RunSync
             }
         }
         return $out;
-    }
-
-    /** @param list<Run> $runs */
-    private static function dayBefore(array $runs): string
-    {
-        $times = array_filter(array_map(static fn(Run $r): ?int => ItemMapper::parseTime($r->start ?? $r->finish), $runs));
-        return (string) RunMapper::time(($times === [] ? time() : min($times)) - 86400);
     }
 
     /** One row per VM name (case-insensitive), as the table's unique key wants. */
