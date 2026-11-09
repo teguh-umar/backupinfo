@@ -43,8 +43,10 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
 
     /** true when the last fetch() was truncated by maxRows */
     private bool $partial = false;
-    /** Raw sessions keyed by id, filled by runs() for failureReasons(). */
-    private array $sessionCache = [];
+    /** Raw sessions keyed by session id, filled by runs(). */
+    private array $sessions = [];
+    /** Raw task sessions keyed by session id, filled by failureReasons()/runItems(). */
+    private array $tasks = [];
 
     public function __construct(private Client $client)
     {
@@ -127,7 +129,7 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
                 if (!is_array($s)) {
                     continue;
                 }
-                $this->sessionCache[(string) ($s['id'] ?? '')] = $s;
+                $this->sessions[(string) ($s['id'] ?? '')] = $s;
                 $run = RunMapper::map($s);
                 if ($run !== null) {
                     $out['runs'][] = $run;
@@ -144,20 +146,24 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
 
     public function runItems(string $historyUuid): array
     {
-        if (isset($this->sessionCache[$historyUuid])) {
-            $tasks = $this->client->paged('/sessions/' . rawurlencode($historyUuid) . '/taskSessions', [], 50, 50);
+        if (isset($this->tasks[$historyUuid])) {
+            $tasks = $this->tasks[$historyUuid];
         } else {
             try {
-                $tasks = $this->client->paged('/sessions/' . rawurlencode($historyUuid) . '/taskSessions', [], 50, 50);
+                $rows = $this->client->paged('/sessions/' . rawurlencode($historyUuid) . '/taskSessions', [], 50, 50);
             } catch (ApiError $e) {
                 return ['items' => [], 'error' => $e->getMessage()];
+            }
+            $tasks = [];
+            foreach ($rows as $t) {
+                if (is_array($t)) {
+                    $this->tasks[$historyUuid][] = $t;
+                    $tasks[] = $t;
+                }
             }
         }
         $items = [];
         foreach ($tasks as $t) {
-            if (!is_array($t)) {
-                continue;
-            }
             $item = RunMapper::item($t);
             if ($item !== null) {
                 $items[] = $item;
@@ -171,37 +177,48 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
         $reasons = [];
         $error = '';
         $count = 0;
-        usort($failedRuns, fn(Run $a, Run $b) => strcmp($b->finish ?? $a->start ?? '', $a->finish ?? $b->start ?? ''));
+        $readStopped = false;
+        usort($failedRuns, fn(Run $a, Run $b): int => self::compareStart($a, $b));
         foreach ($failedRuns as $run) {
-            if ($count >= self::MAX_TASK_CALLS) {
-                break;
-            }
             $uuid = $run->historyUuid;
-            if (!isset($this->sessionCache[$uuid])) {
+            if (!isset($this->tasks[$uuid]) && !$readStopped && $count < self::MAX_TASK_CALLS) {
                 try {
-                    $tasks = $this->client->paged('/sessions/' . rawurlencode($uuid) . '/taskSessions', [], 50, 50);
-                    foreach ($tasks as $t) {
-                        if (is_array($t)) {
-                            $this->sessionCache[(string) ($t['id'] ?? '')] = $t;
-                        }
-                    }
+                    $rows = $this->client->paged('/sessions/' . rawurlencode($uuid) . '/taskSessions', [], 50, 50);
                 } catch (ApiError $e) {
                     if ($error === '') {
                         $error = $e->getMessage();
                     }
-                    break; // first refused call stops further reads
+                    $readStopped = true; // first refused call stops further reads
+                }
+                if (!$readStopped) {
+                    foreach ($rows as $t) {
+                        if (is_array($t)) {
+                            $this->tasks[$uuid][] = $t;
+                        }
+                    }
+                    $count++;
                 }
             }
-            $tasks = [];
-            foreach ($this->sessionCache as $cached) {
-                if (is_array($cached) && (string) ($cached['id'] ?? '') === $uuid) {
-                    $tasks[] = $cached;
-                }
-            }
-            $reasons[$uuid] = RunMapper::reason($tasks, $this->sessionCache[$uuid] ?? []);
-            $count++;
+            $reasons[$uuid] = RunMapper::reason($this->tasks[$uuid] ?? [], $this->sessions[$uuid] ?? []);
         }
         return ['reasons' => $reasons, 'error' => $error];
+    }
+
+    /** Newest start first; a null start sorts last (unsure is never newest). */
+    private static function compareStart(Run $a, Run $b): int
+    {
+        $sa = $a->start ?? null;
+        $sb = $b->start ?? null;
+        if ($sa === null && $sb === null) {
+            return 0;
+        }
+        if ($sa === null) {
+            return 1;
+        }
+        if ($sb === null) {
+            return -1;
+        }
+        return strcmp($sb, $sa);
     }
 
     public function copyRuns(string $from, string $to): array

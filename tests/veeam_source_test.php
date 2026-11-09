@@ -104,4 +104,62 @@ $runs = $src->runs(function (array $ids) use (&$seenPageKnown): bool {
 check('runs: only Working sessions gives 0 runs', $runs['runs'] === []);
 check('runs: pageKnown receives empty array', $seenPageKnown === [[]], json_encode($seenPageKnown));
 
+// --- failureReasons(): reason comes from the Failed task
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/sessions/s1/taskSessions', vpage([
+    ['name' => 'vm-app-01', 'result' => ['result' => 'Failed', 'message' => 'Disk full']],
+    ['name' => 'vm-app-01', 'result' => ['result' => 'Success']],
+], 2, 0));
+$failed = [new Run('s1', 'JOB-1', 'j1', '2026-11-01 01:00:00', '2026-11-01 02:00:00', Run::FAILED, 'Failed', '', 0)];
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$fr = $src->failureReasons($failed);
+check('failureReasons: reason comes from the Failed task', $fr['reasons']['s1'] === 'Disk full', json_encode($fr));
+check('failureReasons: error empty', $fr['error'] === '');
+
+// --- runItems(): answers from cache with no second HTTP call
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/sessions/s1/taskSessions', vpage([
+    ['name' => 'vm-app-01', 'result' => ['result' => 'Failed', 'message' => 'Disk full']],
+], 1, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$ri1 = $src->runItems('s1');
+$ri2 = $src->runItems('s1');
+$taskCalls = count(array_filter($t->calls, static fn (array $c): bool => str_contains($c['url'], '/taskSessions')));
+check('runItems: items from cache', $ri1 === $ri2 && $ri1['items'][0]['error'] === 'Disk full');
+check('runItems: no second HTTP call', $taskCalls === 1, json_encode(array_column(array_filter($t->calls, static fn (array $c): bool => str_contains($c['url'], '/taskSessions')), 'url')));
+
+// --- failureReasons(): cap at MAX_TASK_CALLS task calls
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+for ($n = 1; $n <= 101; $n++) {
+    $id = 'r' . $n;
+    $t->queue("GET /api/v1/sessions/$id/taskSessions", vpage([['name' => 'vm', 'result' => ['result' => 'Failed']]], 1, 0));
+}
+$failed = [];
+for ($n = 1; $n <= 101; $n++) {
+    $failed[] = new Run('r' . $n, 'JOB-1', 'j1', '2026-11-01 01:00:00', '2026-11-01 02:00:00', Run::FAILED, 'Failed', '', 0);
+}
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$fr = $src->failureReasons($failed);
+$taskCalls = count(array_filter($t->calls, static fn (array $c): bool => str_contains($c['url'], '/taskSessions')));
+check('failureReasons: at most MAX_TASK_CALLS task calls for 101 runs', $taskCalls <= 100, json_encode(['calls' => $taskCalls]));
+
+// --- failureReasons(): 403 on first task call -> one error, no further task calls
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/sessions/s1/taskSessions', vj([], 403));
+$t->queue('GET /api/v1/sessions/s2/taskSessions', vpage([['name' => 'vm', 'result' => ['result' => 'Failed']]], 1, 0));
+$failed = [
+    new Run('s1', 'JOB-1', 'j1', '2026-11-01 01:00:00', '2026-11-01 02:00:00', Run::FAILED, 'Failed', '', 0),
+    new Run('s2', 'JOB-1', 'j1', '2026-11-01 01:00:00', '2026-11-01 02:00:00', Run::FAILED, 'Failed', '', 0),
+];
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$fr = $src->failureReasons($failed);
+$taskCalls = count(array_filter($t->calls, static fn (array $c): bool => str_contains($c['url'], '/taskSessions')));
+check('failureReasons: 403 on first task call gives one error', $fr['error'] !== '');
+check('failureReasons: 403 stops further task calls', $taskCalls === 1, json_encode(['calls' => $taskCalls]));
+
 done();
+
