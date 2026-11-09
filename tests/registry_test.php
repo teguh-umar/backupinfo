@@ -22,9 +22,19 @@ require BI_ROOT . '/src/Vinchin/VinchinSource.php';
 
 use GlpiPlugin\Backupinfo\Source\BackupObject;
 use GlpiPlugin\Backupinfo\Source\Registry;
+use GlpiPlugin\Backupinfo\Vinchin\VinchinSource;
 
-// Registry types.
+// Registry types / labels / per-type facts.
 check('types() is vinchin only', Registry::types() === ['vinchin' => 'Vinchin']);
+check('labels()', Registry::labels() === ['vinchin' => 'Vinchin']);
+check('DEFAULT_TYPE is vinchin', Registry::DEFAULT_TYPE === 'vinchin');
+check('formFields(vinchin) === VinchinSource::FORM_FIELDS', Registry::formFields('vinchin') === VinchinSource::FORM_FIELDS);
+check('formFields(unknown) === []', Registry::formFields('nope') === []);
+check('defaults(vinchin)', Registry::defaults('vinchin') === ['auth_mode' => 'api_key']);
+check('gaps(vinchin) === []', Registry::gaps('vinchin') === []);
+
+// Transport lives in a brand-neutral namespace; the Vinchin files are gone.
+check('transport is brand-neutral', is_subclass_of(\GlpiPlugin\Backupinfo\Http\CurlTransport::class, \GlpiPlugin\Backupinfo\Http\Transport::class) && !file_exists(BI_ROOT . '/src/Vinchin/Transport.php'));
 
 // Transport lives in a brand-neutral namespace; the Vinchin files are gone.
 check('transport is brand-neutral', is_subclass_of(\GlpiPlugin\Backupinfo\Http\CurlTransport::class, \GlpiPlugin\Backupinfo\Http\Transport::class) && !file_exists(BI_ROOT . '/src/Vinchin/Transport.php'));

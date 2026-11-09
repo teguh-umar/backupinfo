@@ -101,40 +101,74 @@ class Connection extends CommonDBTM
         $this->initForm($ID, $options);
         $this->showFormHeader($options);
 
-        echo "<tr class='tab_bg_1'><td>" . __('Name') . "</td><td>";
+        $typeValue = (string) ($this->fields['type'] ?? Registry::DEFAULT_TYPE);
+        $authValue = (string) ($this->fields['auth_mode'] ?? Registry::defaults($typeValue)['auth_mode'] ?? 'api_key');
+        echo '<tr class="tab_bg_1"><td data-bi-field="name">' . __('Name') . '</td><td data-bi-field="name">';
         echo Html::input('name', ['value' => $this->fields['name'] ?? '']);
-        echo "</td><td>" . __('Active') . "</td><td>";
+        echo '</td><td data-bi-field="is_active">' . __('Active') . '</td><td data-bi-field="is_active">';
         Dropdown::showYesNo('is_active', $this->fields['is_active'] ?? 1);
-        echo "</td></tr>";
+        echo '</td></tr>';
 
-        echo "<tr class='tab_bg_1'><td>" . __('Type') . "</td><td>";
-        Dropdown::showFromArray('type', Registry::types(), ['value' => $this->fields['type'] ?? 'vinchin']);
-        echo "</td><td>" . __('Verify TLS certificate', 'backupinfo') . "</td><td>";
+        echo '<tr class="tab_bg_1"><td data-bi-field="type">' . __('Type') . '</td><td data-bi-field="type">';
+        Dropdown::showFromArray('type', Registry::types(), ['value' => $typeValue]);
+        echo '</td><td data-bi-field="verify_tls">' . __('Verify TLS certificate', 'backupinfo') . '</td><td data-bi-field="verify_tls">';
         Dropdown::showYesNo('verify_tls', $this->fields['verify_tls'] ?? 1);
-        echo "</td></tr>";
+        echo '</td></tr>';
 
-        echo "<tr class='tab_bg_1'><td>" . __('Host', 'backupinfo') . "</td><td>";
+        echo '<tr class="tab_bg_1"><td data-bi-field="host">' . __('Host', 'backupinfo') . '</td><td data-bi-field="host">';
         echo Html::input('host', ['value' => $this->fields['host'] ?? '', 'size' => 60]);
-        echo "</td><td>" . __('Authentication', 'backupinfo') . "</td><td>";
+        echo '</td><td data-bi-field="auth_mode">' . __('Authentication', 'backupinfo') . '</td><td data-bi-field="auth_mode">';
         Dropdown::showFromArray('auth_mode', [
             'api_key' => __('API key', 'backupinfo'),
             'login'   => __('Username and password', 'backupinfo'),
-        ], ['value' => $this->fields['auth_mode'] ?? 'api_key']);
-        echo "</td></tr>";
+        ], ['value' => $authValue]);
+        echo '</td></tr>';
 
-        echo "<tr class='tab_bg_1'><td>" . __('API key', 'backupinfo') . "</td><td>";
+        echo '<tr class="tab_bg_1"><td data-bi-field="api_key">' . __('API key', 'backupinfo') . '</td><td data-bi-field="api_key">';
         $this->secretInput('api_key', 'API key');
-        echo "</td><td>" . __('Username', 'backupinfo') . "</td><td>";
+        echo '</td><td data-bi-field="username">' . __('Username', 'backupinfo') . '</td><td data-bi-field="username">';
         echo Html::input('username', ['value' => $this->fields['username'] ?? '']);
-        echo "</td></tr>";
+        echo '</td></tr>';
 
-        echo "<tr class='tab_bg_1'><td>" . __('Password') . "</td><td>";
+        echo '<tr class="tab_bg_1"><td data-bi-field="password">' . __('Password') . '</td><td data-bi-field="password">';
         $this->secretInput('password', 'Password');
-        echo "</td><td></td><td></td></tr>";
+        echo '</td><td data-bi-field="api_version">' . __('API version', 'backupinfo') . '</td><td data-bi-field="api_version">';
+        echo Html::input('api_version', [
+            'value'        => $this->fields['api_version'] ?? '',
+            'placeholder'  => '1.3-rev2',
+        ]);
+        echo '</td></tr>';
 
-        echo "<tr class='tab_bg_1'><td>" . __('Comments') . "</td><td colspan='3'>";
+        echo '<tr class="tab_bg_1"><td data-bi-field="comment">' . __('Comments') . '</td><td colspan="3" data-bi-field="comment">';
         echo "<textarea name='comment' cols='80' rows='4'>" . htmlescape($this->fields['comment'] ?? '') . "</textarea>";
-        echo "</td></tr>";
+        echo '</td></tr>';
+
+        // Show/hide per-type form fields. JSON of type => field list; cells outside the chosen
+        // type's list get d-none and their inputs disabled (not posted).
+        $fieldsJson = htmlspecialchars(json_encode(array_map(
+            static fn(string $t): array => Registry::formFields($t),
+            Registry::types()
+        )));
+        echo "<script>
+            (function(){
+                var fields = {$fieldsJson};
+                var typeSel = document.querySelector(\"select[name='type']\");
+                if (!typeSel) return;
+                function apply() {
+                    var t = typeSel.value;
+                    var show = fields[t] || [];
+                    document.querySelectorAll('[data-bi-field]').forEach(function(cell){
+                        var f = cell.getAttribute('data-bi-field');
+                        var on = show.indexOf(f) >= 0;
+                        cell.classList.toggle('d-none', !on);
+                        var inp = cell.querySelector('input, select, textarea');
+                        if (inp) inp.disabled = !on;
+                    });
+                }
+                typeSel.addEventListener('change', apply);
+                apply();
+            })();
+        </script>";
 
         $this->showFormButtons($options);
         return true;

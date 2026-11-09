@@ -55,6 +55,10 @@ check('clear checkboxes present', str_contains($src, "name='_clear_\" . \$field"
 check('type select from Registry::types()', str_contains($src, 'Registry::types()'));
 check('auth_mode choices', str_contains($src, "'api_key'") && str_contains($src, "'login'"));
 check('verify_tls field', str_contains($src, 'verify_tls'));
+check('api_version field on the form', str_contains($src, 'data-bi-field="api_version"'));
+check('form reads per-type fields from Registry', str_contains($src, 'Registry::formFields('));
+check('new records take type from DEFAULT_TYPE', str_contains($src, 'Registry::DEFAULT_TYPE'));
+check('no hardcoded type default', !str_contains($src, "?? 'vinchin'"));
 check('no legacy fields in form', !preg_match("/api_secret|'token'|'site'|api_url/", $src));
 check('secret() decrypts via GLPIKey', (bool) preg_match('/function secret\(.*?->decrypt\(/s', $src));
 check('global classes imported', str_contains($src, 'use Html;') && str_contains($src, 'use Dropdown;') && str_contains($src, 'use CommonDBTM;'));

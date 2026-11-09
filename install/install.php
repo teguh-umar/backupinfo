@@ -17,6 +17,7 @@ function plugin_backupinfo_install()
             `type` varchar(50) NOT NULL DEFAULT 'vinchin',
             `host` varchar(255) DEFAULT NULL,
             `auth_mode` varchar(30) NOT NULL DEFAULT 'token',
+            `api_version` varchar(20) NOT NULL DEFAULT '',
             `api_key` text,
             `username` varchar(255) DEFAULT NULL,
             `password` text,
@@ -35,6 +36,7 @@ function plugin_backupinfo_install()
         $added = [
             'host'        => "varchar(255) DEFAULT NULL",
             'auth_mode'   => "varchar(30) NOT NULL DEFAULT 'token'",
+            'api_version' => "varchar(20) NOT NULL DEFAULT ''",
             'username'    => "varchar(255) DEFAULT NULL",
             'password'    => "text",
             'verify_tls'  => "tinyint NOT NULL DEFAULT 1",
@@ -46,6 +48,11 @@ function plugin_backupinfo_install()
             if (!$DB->fieldExists('glpi_plugin_backupinfo_connections', $field)) {
                 $DB->doQuery("ALTER TABLE `glpi_plugin_backupinfo_connections` ADD COLUMN `$field` $definition");
             }
+        }
+
+        // 0.5.0: per-connection API version (Veeam connector uses it; Vinchin ignores it)
+        if (!$DB->fieldExists('glpi_plugin_backupinfo_connections', 'api_version')) {
+            $DB->doQuery("ALTER TABLE `glpi_plugin_backupinfo_connections` ADD COLUMN `api_version` varchar(20) NOT NULL DEFAULT ''");
         }
 
         // Legacy rc columns: carry api_url over to host, then drop the unused ones

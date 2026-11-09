@@ -106,7 +106,7 @@ These were decided by the user, or by the owner in the plan:
 |---|---|---|---|---|
 | 1 Neutral HTTP transport | a258575 | SUITES OK | src/Http/Transport.php, src/Http/CurlTransport.php, src/Vinchin/Client.php, src/Source/Registry.php, tests/* (requires + use lines) | none |
 | 2 Failure reasons behind the source | cbe6130 | SUITES OK | src/Source/RunHistorySource.php, src/Vinchin/VinchinSource.php, src/Sync/RunSync.php, tests/run_sync_test.php, tests/run_source_test.php | none |
-| 3 Verification behind VerifyingSource | | | | |
+| 3 Verification behind VerifyingSource | f72d49b | SUITES OK | src/Source/VerifyingSource.php, src/Vinchin/VerifyMapper.php, src/Sync/VerifyImport.php, src/Vinchin/VinchinSource.php, src/Cron.php, src/RestoreTest.php, src/AssetTab.php, tests/* | none |
 | 4 Registry facts, form, api_version | | | | |
 | 5 Declared gaps, goal-1 test | | | | |
 | 6 Time helper, Veeam client | | | | |

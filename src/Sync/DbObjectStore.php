@@ -84,7 +84,7 @@ final class DbObjectStore implements ObjectStore
     {
         global $DB;
 
-        $labels = Registry::types();
+        $labels = Registry::labels();
         $types  = [];
         foreach ($DB->request(['SELECT' => ['id', 'type'], 'FROM' => 'glpi_plugin_backupinfo_connections', 'WHERE' => ['is_active' => 1]]) as $c) {
             $types[(int) $c['id']] = (string) $c['type'];
@@ -147,7 +147,7 @@ final class DbObjectStore implements ObjectStore
     {
         global $DB;
 
-        $labels = Registry::types();
+        $labels = Registry::labels();
         $conns  = [];
         foreach ($DB->request(['SELECT' => ['id', 'type', 'name', 'last_sync'], 'FROM' => 'glpi_plugin_backupinfo_connections', 'WHERE' => ['is_active' => 1]]) as $c) {
             $conns[(int) $c['id']] = $c;

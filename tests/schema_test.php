@@ -6,7 +6,7 @@ $install   = (string) file_get_contents(BI_ROOT . '/install/install.php');
 $uninstall = (string) file_get_contents(BI_ROOT . '/install/uninstall.php');
 
 $tables = [
-    'glpi_plugin_backupinfo_connections' => ['id', 'name', 'type', 'host', 'auth_mode', 'api_key', 'username',
+    'glpi_plugin_backupinfo_connections' => ['id', 'name', 'type', 'host', 'auth_mode', 'api_version', 'api_key', 'username',
         'password', 'verify_tls', 'is_active', 'last_sync', 'last_status', 'last_error', 'comment',
         'date_creation', 'date_mod'],
     'glpi_plugin_backupinfo_objects'     => ['id', 'connections_id', 'source_key', 'name', 'ip', 'kind', 'job_name',
@@ -57,6 +57,8 @@ check('restoreintervals unique (computers_id)',
     (bool) preg_match('/UNIQUE KEY `[a-z_]+` \(`computers_id`\)/', $install));
 check('objects table has timepoint_uuid', str_contains($install, '`timepoint_uuid` varchar(64) DEFAULT NULL'));
 check('upgrade adds timepoint_uuid behind fieldExists', (bool) preg_match("/fieldExists\\('glpi_plugin_backupinfo_objects', 'timepoint_uuid'\\)/", $install));
+check('connections has api_version column', str_contains($install, "`api_version` varchar(20) NOT NULL DEFAULT ''"));
+check('upgrade adds api_version behind fieldExists', (bool) preg_match("/fieldExists\\('glpi_plugin_backupinfo_connections', 'api_version'\\)/", $install));
 foreach (['run_pages_max' => 20, 'run_keep_months' => 36, 'restore_interval_months' => 12] as $key => $value) {
     check("config default $key = $value", (bool) preg_match("/'$key'\s*=>\s*$value,/", $install));
 }

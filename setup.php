@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Backup Info - Vinchin/Veritas backup overview for GLPI 11 (PGN GLPI Suite)
+ * Backup Info - backup systems overview and audit evidence for GLPI 11 (PGN GLPI Suite)
  *
  * @author  ICT
  * @license GPL-3.0-or-later

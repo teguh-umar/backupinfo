@@ -28,6 +28,15 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
     /** login mode: true once this instance holds a token */
     private bool $loggedIn = false;
 
+    /** Connection form fields for this type. */
+    public const FORM_FIELDS = ['host', 'verify_tls', 'auth_mode', 'api_key', 'username', 'password'];
+
+    /** Default values for a new connection of this type. */
+    public const DEFAULTS = ['auth_mode' => 'api_key'];
+
+    /** Declared audit gaps, section key => one sentence. None for Vinchin. */
+    public const GAPS = [];
+
     private const ITEMS_PATH   = '/backup_data/items/list';
     private const HISTORY_PATH = '/jobs/history';
     private const JOBS_PATH    = '/jobs';

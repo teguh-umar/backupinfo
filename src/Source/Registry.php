@@ -8,10 +8,61 @@ use GlpiPlugin\Backupinfo\Vinchin\VinchinSource;
 
 final class Registry
 {
-    /** @return array<string, string> source type => label */
+    /** @return array<string, string> source type => label (shown in the Type dropdown) */
     public static function types(): array
     {
         return ['vinchin' => 'Vinchin'];
+    }
+
+    /** @return array<string, string> source type => short label (used in media text) */
+    public static function labels(): array
+    {
+        return ['vinchin' => 'Vinchin'];
+    }
+
+    /** Default source type for new connection records. */
+    public const DEFAULT_TYPE = 'vinchin';
+
+    /**
+     * Per-type form field names, from the source class's FORM_FIELDS, or [] for an unknown type.
+     *
+     * @return list<string>
+     */
+    public static function formFields(string $type): array
+    {
+        $src = self::sourceClass($type);
+        return $src === null ? [] : ($src::FORM_FIELDS ?? []);
+    }
+
+    /** Default values for a new connection of the given type, from the source class's DEFAULTS. */
+    public static function defaults(string $type): array
+    {
+        $src = self::sourceClass($type);
+        return $src === null ? [] : ($src::DEFAULTS ?? []);
+    }
+
+    /**
+     * Per-type declared audit gaps, section key => one sentence, from the source class's GAPS.
+     *
+     * @return array<string, string>
+     */
+    public static function gaps(string $type): array
+    {
+        $src = self::sourceClass($type);
+        return $src === null ? [] : ($src::GAPS ?? []);
+    }
+
+    /**
+     * Resolve the source class for a type, or null.
+     *
+     * @return class-string|null
+     */
+    private static function sourceClass(string $type): ?string
+    {
+        return match ($type) {
+            'vinchin' => \GlpiPlugin\Backupinfo\Vinchin\VinchinSource::class,
+            default   => null,
+        };
     }
 
     /**
@@ -25,7 +76,8 @@ final class Registry
      */
     public static function create(array $connectionRow, callable $decrypt, ?callable $vmNames = null): BackupSource
     {
-        $type = (string) ($connectionRow['type'] ?? '');
+        $type   = (string) ($connectionRow['type'] ?? '');
+        $defaults = self::defaults($type);
 
         return match ($type) {
             'vinchin' => new VinchinSource(
@@ -37,7 +89,7 @@ final class Registry
                     $decrypt((string) ($connectionRow['password'] ?? '')),
                     !empty($connectionRow['verify_tls'] ?? 1)
                 ),
-                ($connectionRow['auth_mode'] ?? 'api_key') === 'login',
+                (($connectionRow['auth_mode'] ?? $defaults['auth_mode'] ?? 'api_key') === 'login'),
                 $vmNames ?? static fn(): array => []
             ),
             default => throw new \InvalidArgumentException("Unknown backup source type: {$type}"),
