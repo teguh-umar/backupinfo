@@ -3,6 +3,7 @@
 require __DIR__ . '/bootstrap.php';
 
 require BI_ROOT . '/src/Source/Run.php';
+require BI_ROOT . '/src/Source/Event.php';
 require BI_ROOT . '/src/Source/BackupSource.php';
 require BI_ROOT . '/src/Source/RunHistorySource.php';
 require BI_ROOT . '/src/Source/PartialFetch.php';
@@ -14,7 +15,10 @@ require BI_ROOT . '/src/Http/Transport.php';
 require BI_ROOT . '/src/Http/CurlTransport.php';
 require BI_ROOT . '/src/Veeam/ApiError.php';
 require BI_ROOT . '/src/Veeam/Client.php';
+require BI_ROOT . '/src/Veeam/EventMapper.php';
+require BI_ROOT . '/src/Veeam/ObjectMapper.php';
 require BI_ROOT . '/src/Veeam/RunMapper.php';
+require BI_ROOT . '/src/Veeam/TargetMapper.php';
 require BI_ROOT . '/src/Veeam/VeeamSource.php';
 require BI_ROOT . '/src/Probe.php';
 
@@ -161,5 +165,54 @@ $taskCalls = count(array_filter($t->calls, static fn (array $c): bool => str_con
 check('failureReasons: 403 on first task call gives one error', $fr['error'] !== '');
 check('failureReasons: 403 stops further task calls', $taskCalls === 1, json_encode(['calls' => $taskCalls]));
 
+function copySession(string $id, string $name, string $creationTime): array
+{
+    return [
+        'id' => $id, 'name' => $name, 'jobId' => 'jc-' . $id,
+        'creationTime' => $creationTime, 'endTime' => null,
+        'state' => 'Stopped', 'result' => ['result' => 'Success', 'isCanceled' => false],
+    ];
+}
+
+// --- copyRuns(): two copy sessions, one inside the window and one outside,
+// each with 2 tasks -> 2 copy events, both from the in-window session
+$from = '2026-11-01 00:00:00';
+$to = '2026-11-30 23:59:59';
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/sessions', vpage([
+    copySession('c-in', 'COPY-IN', '2026-11-15T01:00:00Z'),
+    copySession('c-out', 'COPY-OUT', '2026-10-01T01:00:00Z'),
+], 2, 0));
+$t->queue('GET /api/v1/sessions/c-in/taskSessions', vpage([
+    ['name' => 'vm-app-01', 'result' => ['result' => 'Success']],
+    ['name' => 'vm-app-01', 'result' => ['result' => 'Success']],
+], 2, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$cr = $src->copyRuns($from, $to);
+$taskCalls = count(array_filter($t->calls, static fn (array $c): bool => str_contains($c['url'], '/taskSessions')));
+check('copyRuns: 2 copy events from the in-window session', count($cr['rows']) === 2, json_encode($cr['rows']));
+check('copyRuns: out-of-window session not read', $taskCalls === 1, json_encode(['calls' => $taskCalls]));
+check('copyRuns: no errors', $cr['error'] === '');
+
+// --- copyRuns(): 60 sessions in the window -> at most 50 task calls
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$sixty = [];
+for ($n = 1; $n <= 60; $n++) {
+    $sixty[] = copySession('cs' . $n, 'COPY-' . $n, '2026-11-10T01:00:00Z');
+    $t->queue("GET /api/v1/sessions/cs$n/taskSessions", vpage([
+        ['name' => 'vm', 'result' => ['result' => 'Success']],
+        ['name' => 'vm', 'result' => ['result' => 'Success']],
+    ], 2, 0));
+}
+$t->queue('GET /api/v1/sessions', vpage($sixty, 60, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$cr = $src->copyRuns($from, $to);
+$taskCalls = count(array_filter($t->calls, static fn (array $c): bool => str_contains($c['url'], '/taskSessions')));
+check('copyRuns: 60 sessions in window -> at most 50 task calls', $taskCalls <= 50, json_encode(['calls' => $taskCalls]));
+check('copyRuns: no errors', $cr['error'] === '');
+
 done();
+
 

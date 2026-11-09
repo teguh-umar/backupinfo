@@ -224,6 +224,12 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
     public function copyRuns(string $from, string $to): array
     {
         $out = [];
+        $taskCalls = 0;
+        $taskCallCap = 50;
+        $fromEpoch = Time::epoch($from) ?? 0;
+        $toEpoch = Time::epoch($to) ?? PHP_INT_MAX;
+        // orderColumn/orderAsc for /sessions are not confirmed in the 1.3-rev2 reference,
+        // so page without order and filter client-side (noted in §9b).
         try {
             $jobs = $this->client->paged('/sessions', ['typeFilter' => 'BackupCopyJob'], 5000, 5000,
                 fn(array $batch): bool => false);
@@ -231,15 +237,19 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
                 if (!is_array($job)) {
                     continue;
                 }
-                $ct = Time::local($job['creationTime'] ?? null);
-                if ($ct === null || $ct < Time::epoch($from) || $ct > Time::epoch($to)) {
-                    continue;
+                $ct = Time::epoch($job['creationTime'] ?? null);
+                if ($ct === null || $ct < $fromEpoch || $ct > $toEpoch) {
+                    continue; // outside the window: skip, do not read its task sessions
+                }
+                if ($taskCalls >= $taskCallCap) {
+                    break; // cap the per-sync task-session reads
                 }
                 try {
                     $tasks = $this->client->paged('/sessions/' . rawurlencode((string) ($job['id'] ?? '')) . '/taskSessions', [], 50, 50);
                 } catch (ApiError $e) {
                     continue;
                 }
+                $taskCalls++;
                 foreach ($tasks as $t) {
                     if (!is_array($t)) {
                         continue;
