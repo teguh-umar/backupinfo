@@ -544,6 +544,15 @@
   - TLS: the self-signed certificate on 9419;
   - how to read each Probe `_check` line;
   - the research report's 17 open points, rewritten as "what to look for in Probe or swagger". The report itself is not copied, and no link to the local file is given.
+- [ ] **Step 1b: Manual page (suite rule, hub §4, 2026-11-09).**
+  - `tools/build_zip.py` copies `<suite>/docs/manual/backupinfo.md` to `docs/manual.md` and allowlists it. If the source is missing, the build goes on without it.
+  - `front/manual.php`:
+    - checks VIEW READ;
+    - renders with League\CommonMark (`html_input => 'escape'`, `allow_unsafe_links => false`);
+    - shows a plain notice when there is no manual.
+  - A **Manual** link (`ti ti-book`) goes in the menu sub-navigation and in the Setup section.
+  - The version parser reads "Versi didokumentasikan: X.Y.Z" and skips leading `*`, `_` and backtick characters. It is tested against a Copilot-style bold header (`**0.5.0**`).
+  - The page warns when the manual lags the plugin, by major.minor only.
 - [ ] **Step 2: Release text.**
   - The CHANGELOG `0.5.0-rc1` entry covers brand-neutral sources, Veeam B&R 13 preview, every declared gap (tape, alarms, job log, login IP, SureBackup, platform VMs), and the new `api_version` field.
   - Bump the version, and update the version test in `ui_wiring_test.php` if it pins it.
