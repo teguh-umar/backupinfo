@@ -263,8 +263,8 @@ These were decided by the user, or by the owner in the plan:
 |---|---|---|---|---|
 | R1 | b178d61 | SUITES OK | gapsFor: veeam targets gives one gap | none |
 | R2 | cdfe493 | SUITES OK | src/Connection.php, tests/connection_test.php | none |
-| R3 | | | | |
-| R4 | | | | |
+| R3 | 48e9405 | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php | orderColumn/orderAsc for /sessions unconfirmed in 1.3-rev2 reference; paging unordered |
+| R4 | 39d05d7 | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php | none |
 | R5 | | | | |
 | R6 | | | | |
 | R7 | | | | |
