@@ -109,7 +109,7 @@ These were decided by the user, or by the owner in the plan:
 | 3 Verification behind VerifyingSource | f72d49b | SUITES OK | src/Source/VerifyingSource.php, src/Vinchin/VerifyMapper.php, src/Sync/VerifyImport.php, src/Vinchin/VinchinSource.php, src/Cron.php, src/RestoreTest.php, src/AssetTab.php, tests/* | none |
 | 4 Registry facts, form, api_version | 45eed0b | SUITES OK | src/Source/Registry.php, src/Vinchin/VinchinSource.php, src/Connection.php, install/install.php, src/Sync/DbObjectStore.php, setup.php, tests/* | none |
 | 5 Declared gaps, goal-1 test | 29c16a2 | SUITES OK | src/AuditPage.php, src/AuditData.php, tests/audit_page_test.php, tests/brand_neutral_test.php | none |
-| 6 Time helper, Veeam client | | | | |
+| 6 Time helper, Veeam client | 4503e96 | SUITES OK | src/Source/Time.php, src/Veeam/ApiError.php, src/Veeam/Client.php, tests/veeam_client_test.php, tests/veeam_fakes.php | none |
 | 7 Run and task mapping | | | | |
 | 8 Objects, targets, events mapping | | | | |
 | 9 VeeamSource, Registry entry | | | | |
