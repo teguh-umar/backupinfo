@@ -3,11 +3,11 @@
 require __DIR__ . '/bootstrap.php';
 
 require BI_ROOT . '/src/Vinchin/Signer.php';
-require BI_ROOT . '/src/Vinchin/Transport.php';
+require BI_ROOT . '/src/Http/Transport.php';
 require BI_ROOT . '/src/Vinchin/Client.php';
 
 use GlpiPlugin\Backupinfo\Vinchin\Client;
-use GlpiPlugin\Backupinfo\Vinchin\Transport;
+use GlpiPlugin\Backupinfo\Http\Transport;
 
 final class FakeTransport implements Transport
 {

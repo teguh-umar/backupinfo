@@ -5,7 +5,7 @@ require __DIR__ . '/bootstrap.php';
 foreach ([
     'Text', 'Source/BackupObject', 'Source/Run', 'Source/BackupSource', 'Source/ProbeableSource',
     'Source/AuditProbeableSource', 'Source/RunHistorySource', 'Source/AuditSource', 'Source/PartialFetch',
-    'Vinchin/Signer', 'Vinchin/Transport', 'Vinchin/Client', 'Vinchin/ItemMapper', 'Vinchin/JobHistoryMapper',
+    'Vinchin/Signer', 'Http/Transport', 'Vinchin/Client', 'Vinchin/ItemMapper', 'Vinchin/JobHistoryMapper',
     'Vinchin/ScheduleMapper', 'Vinchin/RunMapper', 'Source/Event', 'Source/Target', 'Vinchin/EventMapper', 'Vinchin/VinchinSource', 'Sync/VerifyImport',
 ] as $f) {
     require BI_ROOT . "/src/$f.php";

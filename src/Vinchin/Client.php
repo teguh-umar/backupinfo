@@ -2,6 +2,8 @@
 
 namespace GlpiPlugin\Backupinfo\Vinchin;
 
+use GlpiPlugin\Backupinfo\Http\Transport;
+
 /** Vinchin console-protocol client (port of the Python VinchinClient). Errors never carry secrets. */
 final class Client
 {

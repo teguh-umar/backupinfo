@@ -1,6 +1,6 @@
 <?php
 
-namespace GlpiPlugin\Backupinfo\Vinchin;
+namespace GlpiPlugin\Backupinfo\Http;
 
 final class CurlTransport implements Transport
 {
@@ -35,7 +35,7 @@ final class CurlTransport implements Transport
         if ($out === false) {
             $err = curl_error($ch);
             curl_close($ch);
-            throw new \RuntimeException('Vinchin connection failed: ' . $err);
+            throw new \RuntimeException('Connection failed: ' . $err);
         }
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         curl_close($ch);

@@ -3,7 +3,7 @@
 namespace GlpiPlugin\Backupinfo\Source;
 
 use GlpiPlugin\Backupinfo\Vinchin\Client;
-use GlpiPlugin\Backupinfo\Vinchin\CurlTransport;
+use GlpiPlugin\Backupinfo\Http\CurlTransport;
 use GlpiPlugin\Backupinfo\Vinchin\VinchinSource;
 
 final class Registry

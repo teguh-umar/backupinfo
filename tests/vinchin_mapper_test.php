@@ -11,8 +11,8 @@ require BI_ROOT . '/src/Source/AuditSource.php';
 require BI_ROOT . '/src/Source/PartialFetch.php';
 require BI_ROOT . '/src/Source/Registry.php';
 require BI_ROOT . '/src/Vinchin/Signer.php';
-require BI_ROOT . '/src/Vinchin/Transport.php';
-require BI_ROOT . '/src/Vinchin/CurlTransport.php';
+require BI_ROOT . '/src/Http/Transport.php';
+require BI_ROOT . '/src/Http/CurlTransport.php';
 require BI_ROOT . '/src/Vinchin/Client.php';
 require BI_ROOT . '/src/Vinchin/ItemMapper.php';
 require BI_ROOT . '/src/Vinchin/JobHistoryMapper.php';
@@ -23,7 +23,7 @@ use GlpiPlugin\Backupinfo\Source\Registry;
 use GlpiPlugin\Backupinfo\Vinchin\Client;
 use GlpiPlugin\Backupinfo\Vinchin\ItemMapper;
 use GlpiPlugin\Backupinfo\Vinchin\JobHistoryMapper;
-use GlpiPlugin\Backupinfo\Vinchin\Transport;
+use GlpiPlugin\Backupinfo\Http\Transport;
 use GlpiPlugin\Backupinfo\Vinchin\VinchinSource;
 
 // parseTime

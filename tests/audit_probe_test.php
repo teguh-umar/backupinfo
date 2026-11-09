@@ -5,7 +5,7 @@ require __DIR__ . '/bootstrap.php';
 foreach ([
     'Source/BackupObject', 'Source/BackupSource', 'Source/ProbeableSource', 'Source/AuditProbeableSource', 'Source/RunHistorySource', 'Source/AuditSource',
     'Source/PartialFetch', 'Source/Registry',
-    'Vinchin/Signer', 'Vinchin/Transport', 'Vinchin/CurlTransport', 'Vinchin/Client',
+    'Vinchin/Signer', 'Http/Transport', 'Http/CurlTransport', 'Vinchin/Client',
     'Vinchin/ItemMapper', 'Vinchin/JobHistoryMapper', 'Vinchin/ScheduleMapper', 'Source/Event', 'Source/Target', 'Vinchin/EventMapper', 'Vinchin/VinchinSource',
     'Matching/AssetLookup', 'Matching/Matcher', 'Rpo', 'Probe',
 ] as $f) {
@@ -16,7 +16,7 @@ use GlpiPlugin\Backupinfo\Probe;
 use GlpiPlugin\Backupinfo\Source\AuditProbeableSource;
 use GlpiPlugin\Backupinfo\Source\BackupSource;
 use GlpiPlugin\Backupinfo\Vinchin\Client;
-use GlpiPlugin\Backupinfo\Vinchin\Transport;
+use GlpiPlugin\Backupinfo\Http\Transport;
 use GlpiPlugin\Backupinfo\Vinchin\VinchinSource;
 
 require __DIR__ . '/fakes.php';

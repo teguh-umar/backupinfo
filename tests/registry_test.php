@@ -11,8 +11,8 @@ require BI_ROOT . '/src/Source/AuditSource.php';
 require BI_ROOT . '/src/Source/PartialFetch.php';
 require BI_ROOT . '/src/Source/Registry.php';
 require BI_ROOT . '/src/Vinchin/Signer.php';
-require BI_ROOT . '/src/Vinchin/Transport.php';
-require BI_ROOT . '/src/Vinchin/CurlTransport.php';
+require BI_ROOT . '/src/Http/Transport.php';
+require BI_ROOT . '/src/Http/CurlTransport.php';
 require BI_ROOT . '/src/Vinchin/Client.php';
 require BI_ROOT . '/src/Vinchin/ItemMapper.php';
 require BI_ROOT . '/src/Vinchin/JobHistoryMapper.php';
@@ -24,6 +24,9 @@ use GlpiPlugin\Backupinfo\Source\Registry;
 
 // Registry types.
 check('types() is vinchin only', Registry::types() === ['vinchin' => 'Vinchin']);
+
+// Transport lives in a brand-neutral namespace; the Vinchin files are gone.
+check('transport is brand-neutral', is_subclass_of(\GlpiPlugin\Backupinfo\Http\CurlTransport::class, \GlpiPlugin\Backupinfo\Http\Transport::class) && !file_exists(BI_ROOT . '/src/Vinchin/Transport.php'));
 
 // Unknown type throws.
 $decrypt = fn(string $s): string => $s;

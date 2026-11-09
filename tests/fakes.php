@@ -2,7 +2,7 @@
 
 // Shared fakes for the Vinchin source tests (no network).
 
-use GlpiPlugin\Backupinfo\Vinchin\Transport;
+use GlpiPlugin\Backupinfo\Http\Transport;
 
 /** Answers by request path (method + path, no query), so tests do not depend on call order. */
 final class RouteT implements Transport

@@ -1,6 +1,6 @@
 <?php
 
-namespace GlpiPlugin\Backupinfo\Vinchin;
+namespace GlpiPlugin\Backupinfo\Http;
 
 interface Transport
 {
