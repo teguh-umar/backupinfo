@@ -107,40 +107,39 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
     public function runs(callable $pageKnown, int $maxPages, int $pageSize = 100): array
     {
         $out = ['runs' => [], 'errors' => []];
-        $stop = false;
-        for ($page = 0; $page < $maxPages && !$stop; $page++) {
-            $skip = $page * $pageSize;
+        $skip = 0;
+        for ($page = 0; $page < $maxPages; $page++) {
             try {
-                $pageRes = $this->client->paged('/sessions', ['typeFilter' => implode(',', self::RUN_TYPES)], $pageSize, $pageSize,
-                    fn(array $batch): bool => $this->pageKnown($batch, $pageKnown));
-                $mapped = [];
-                foreach ($pageRes as $s) {
-                    if (!is_array($s)) {
-                        continue;
-                    }
-                    $this->sessionCache[(string) ($s['id'] ?? '')] = $s;
-                    $run = RunMapper::map($s);
-                    if ($run !== null) {
-                        $mapped[] = $run;
-                    }
-                }
-                $out['runs'] = array_merge($out['runs'], $mapped);
-                // pageKnown decides: a page with only running sessions gives [] -> not known
-                $ids = array_map(fn($s) => (string) ($s['id'] ?? ''), array_filter($pageRes, 'is_array'));
-                if ($pageKnown($ids)) {
-                    $stop = true;
-                }
+                $res = $this->client->get('/sessions', [
+                    'typeFilter' => implode(',', self::RUN_TYPES),
+                    'skip' => $skip,
+                    'limit' => $pageSize,
+                ]);
             } catch (ApiError $e) {
                 $out['errors'][] = $e->getMessage();
-                $stop = true;
+                break;
+            }
+            $data = is_array($res['data'] ?? null) ? $res['data'] : [];
+            $pagination = is_array($res['pagination'] ?? null) ? $res['pagination'] : [];
+            $total = (int) ($pagination['total'] ?? 0);
+            $mappedIds = [];
+            foreach ($data as $s) {
+                if (!is_array($s)) {
+                    continue;
+                }
+                $this->sessionCache[(string) ($s['id'] ?? '')] = $s;
+                $run = RunMapper::map($s);
+                if ($run !== null) {
+                    $out['runs'][] = $run;
+                    $mappedIds[] = $run->historyUuid;
+                }
+            }
+            $skip += count($data);
+            if ($pageKnown($mappedIds) || $data === [] || $skip >= $total) {
+                break;
             }
         }
         return $out;
-    }
-
-    private function pageKnown(array $ids, callable $pageKnown): bool
-    {
-        return $pageKnown($ids);
     }
 
     public function runItems(string $historyUuid): array

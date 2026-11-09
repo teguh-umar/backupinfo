@@ -262,7 +262,7 @@ These were decided by the user, or by the owner in the plan:
 | Item | Commit | Last test line | Failing test seen first (name) | Deviations / unconfirmed values |
 |---|---|---|---|---|
 | R1 | b178d61 | SUITES OK | gapsFor: veeam targets gives one gap | none |
-| R2 | | | | |
+| R2 | cdfe493 | SUITES OK | src/Connection.php, tests/connection_test.php | none |
 | R3 | | | | |
 | R4 | | | | |
 | R5 | | | | |
