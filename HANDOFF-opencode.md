@@ -112,5 +112,5 @@ These were decided by the user, or by the owner in the plan:
 | 6 Time helper, Veeam client | 4503e96 | SUITES OK | src/Source/Time.php, src/Veeam/ApiError.php, src/Veeam/Client.php, tests/veeam_client_test.php, tests/veeam_fakes.php | none |
 | 7 Run and task mapping | b3cbced | SUITES OK | src/Veeam/RunMapper.php, tests/veeam_mapper_test.php | none |
 | 8 Objects, targets, events mapping | 12a3920 | SUITES OK | src/Veeam/ObjectMapper.php, src/Veeam/TargetMapper.php, src/Veeam/EventMapper.php, tests/veeam_mapper_test.php | none |
-| 9 VeeamSource, Registry entry | | | | |
+| 9 VeeamSource, Registry entry | a143b81 | SUITES OK | src/Veeam/VeeamSource.php, src/Source/Registry.php, tests/registry_test.php | none |
 | 10 Veeam Probe | | | | |

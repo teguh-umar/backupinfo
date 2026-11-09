@@ -3,14 +3,17 @@
 namespace GlpiPlugin\Backupinfo\Veeam;
 
 use GlpiPlugin\Backupinfo\Source\AuditSource;
+use GlpiPlugin\Backupinfo\Source\AuditProbeableSource;
 use GlpiPlugin\Backupinfo\Source\BackupObject;
 use GlpiPlugin\Backupinfo\Source\BackupSource;
 use GlpiPlugin\Backupinfo\Source\Event;
 use GlpiPlugin\Backupinfo\Source\PartialFetch;
+use GlpiPlugin\Backupinfo\Source\ProbeableSource;
 use GlpiPlugin\Backupinfo\Source\Run;
 use GlpiPlugin\Backupinfo\Source\RunHistorySource;
 use GlpiPlugin\Backupinfo\Source\Target;
 use GlpiPlugin\Backupinfo\Source\Time;
+use GlpiPlugin\Backupinfo\Probe;
 use GlpiPlugin\Backupinfo\Veeam\ApiError;
 use GlpiPlugin\Backupinfo\Veeam\Client;
 use GlpiPlugin\Backupinfo\Veeam\EventMapper;
@@ -20,10 +23,11 @@ use GlpiPlugin\Backupinfo\Veeam\TargetMapper;
 
 /**
  * Veeam Backup & Replication 13 source (0.5.0 preview). Read-only OAuth2 client.
- * Implements BackupSource, PartialFetch, RunHistorySource and AuditSource.
+ * Implements BackupSource, PartialFetch, RunHistorySource, AuditSource,
+ * ProbeableSource and AuditProbeableSource.
  * Does NOT implement VerifyingSource (SureBackup over REST is unconfirmed).
  */
-final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource, AuditSource
+final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource, AuditSource, ProbeableSource, AuditProbeableSource
 {
     public const MAX_TASK_CALLS = 100;
     public const RUN_TYPES = ['BackupJob'];
@@ -299,5 +303,111 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
             return ['rows' => [], 'error' => $e->getMessage()];
         }
         return ['rows' => TargetMapper::map($states), 'error' => ''];
+    }
+
+    /**
+     * Probe: one page per endpoint, at most $limit rows each. The first raw row of each endpoint
+     * is a status line keyed _check (OK / refused (role?) / unexpected shape / error).
+     *
+     * @return array{raw: array<string, list<array>>, objects: list<BackupObject>, errors: list<string>}
+     */
+    public function probe(int $limit, string $search = ''): array
+    {
+        $raw   = [];
+        $errors = [];
+        $params = ['limit' => $limit];
+        if ($search !== '') {
+            $params['nameFilter'] = '*' . $search . '*';
+        }
+        foreach (['/backupObjects', '/restorePoints', '/backups'] as $path) {
+            list($r, $err) = $this->probeEndpoint($path, $params);
+            $raw[$path] = $r;
+            if ($err !== '') {
+                $errors[] = $err;
+            }
+        }
+        $sessions = [];
+        list($sRaw, $sErr) = $this->probeEndpoint('/sessions', ['typeFilter' => 'BackupJob', 'limit' => $limit]);
+        $raw['/sessions'] = $sRaw;
+        if ($sErr !== '') {
+            $errors[] = $sErr;
+        } else {
+            $sessions = $sRaw;
+            // Shape check: every session must carry result.result
+            foreach ($sessions as $s) {
+                if (is_array($s)) {
+                    $miss = Shape::missing($s, ['result.result']);
+                    if ($miss !== []) {
+                        $raw['/sessions'][0]['_check'] = 'unexpected shape: missing ' . implode(', ', $miss);
+                        break;
+                    }
+                }
+            }
+        }
+        $objects = ObjectMapper::map($sessions, [], []);
+        return ['raw' => $raw, 'objects' => $objects, 'errors' => $errors];
+    }
+
+    /**
+     * Probe audit: one page per audit endpoint.
+     *
+     * @return array{raw: array<string, list<array>>, errors: list<string>}
+     */
+    public function probeAudit(int $limit, string $search = ''): array
+    {
+        $raw   = [];
+        $errors = [];
+        $firstId = '';
+        // First id comes from /sessions?typeFilter=BackupJob (the first page already fetched in probe(),
+        // but here we read it standalone as the audit probe).
+        list($sRaw, $sErr) = $this->probeEndpoint('/sessions', ['typeFilter' => 'BackupJob', 'limit' => $limit]);
+        $raw['/sessions'] = $sRaw;
+        if ($sErr !== '') {
+            $errors[] = $sErr;
+        } elseif (isset($sRaw[0]['id'])) {
+            $firstId = (string) $sRaw[0]['id'];
+        }
+        list($cRaw, $cErr) = $this->probeEndpoint('/sessions', ['typeFilter' => 'BackupCopyJob', 'limit' => $limit]);
+        $raw['/sessions'] = $cRaw;
+        if ($cErr !== '') {
+            $errors[] = $cErr;
+        }
+        if ($firstId !== '') {
+            list($tRaw, $tErr) = $this->probeEndpoint('/sessions/' . rawurlencode($firstId) . '/taskSessions', [], $limit);
+            $raw['/sessions/{id}/taskSessions'] = $tRaw;
+            if ($tErr !== '') {
+                $errors[] = $tErr;
+            }
+        }
+        foreach (['/authorization/events', '/malwareDetection/events', '/backupInfrastructure/repositories/states'] as $path) {
+            list($r, $err) = $this->probeEndpoint($path, [], $limit);
+            $raw[$path] = $r;
+            if ($err !== '') {
+                $errors[] = $err;
+            }
+        }
+        return ['raw' => $raw, 'errors' => $errors];
+    }
+
+    /**
+     * Probe one endpoint: returns (raw rows with _check prepended, error line or '').
+     */
+    private function probeEndpoint(string $path, array $params, int $limit = 5000): array
+    {
+        $params = $params + ['limit' => $limit];
+        try {
+            $rows = $this->client->paged($path, $params, $limit, $limit);
+            if ($rows === []) {
+                $rows[0] = ['_check' => 'OK'];
+            } else {
+                array_unshift($rows, ['_check' => 'OK']);
+            }
+            return [array_map([Probe::class, 'redact'], $rows), ''];
+        } catch (ApiError $e) {
+            $check = $e->status === 403
+                ? 'refused (role?): ' . $e->getMessage()
+                : 'error: ' . $e->getMessage();
+            return [[['_check' => $check]], $e->getMessage()];
+        }
     }
 }
