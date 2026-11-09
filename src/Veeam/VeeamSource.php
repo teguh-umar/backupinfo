@@ -61,38 +61,76 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
     {
         $this->partial = false;
         $objects = [];
+        $newest = [];
+        $backupNames = [];
         try {
-            $objects = $this->client->paged('/backupObjects', [], 5000, 5000);
+            // 1. Backup objects.
+            $objects = $this->client->paged('/backupObjects', [], 200, 5000);
             $this->partial = $this->client->lastTruncated;
+            // 2. Newest restore point per object name. The stop callback folds each page into
+            // $newest so paging can stop as soon as every object name has a point. $rps is folded
+            // again after paged() returns because paged() may short-circuit on skip >= total
+            // before invoking the stop callback on the final page.
+            $stop = function (array $page) use (&$newest): bool {
+                foreach ($page as $rp) {
+                    if (!is_array($rp)) {
+                        continue;
+                    }
+                    $n = trim((string) ($rp['name'] ?? ''));
+                    if ($n === '') {
+                        continue;
+                    }
+                    $t = Time::epoch($rp['creationTime'] ?? null);
+                    if ($t === null) {
+                        continue;
+                    }
+                    $key = mb_strtolower($n);
+                    if (!isset($newest[$key]) || $newest[$key]['time'] < $t) {
+                        $newest[$key] = ['time' => $t, 'backupId' => (string) ($rp['backupId'] ?? '')];
+                    }
+                }
+                return self::allNamesSeen($objects, $newest);
+            };
+            try {
+                $rps = $this->client->paged('/restorePoints', ['orderColumn' => 'CreationTime', 'orderAsc' => 'false'], 200, 5000, $stop);
+                foreach ($rps as $rp) {
+                    if (!is_array($rp)) {
+                        continue;
+                    }
+                    $n = trim((string) ($rp['name'] ?? ''));
+                    if ($n === '') {
+                        continue;
+                    }
+                    $t = Time::epoch($rp['creationTime'] ?? null);
+                    if ($t === null) {
+                        continue;
+                    }
+                    $key = mb_strtolower($n);
+                    if (!isset($newest[$key]) || $newest[$key]['time'] < $t) {
+                        $newest[$key] = ['time' => $t, 'backupId' => (string) ($rp['backupId'] ?? '')];
+                    }
+                }
+            } catch (ApiError $e) {
+                // not fatal: objects get lastBackup null
+            }
+            // 3. Backup jobs -> job names keyed by backup id.
+            try {
+                $backups = $this->client->paged('/backups', [], 200, 5000);
+                foreach ($backups as $b) {
+                    if (is_array($b) && ($bid = (string) ($b['id'] ?? '')) !== '') {
+                        $backupNames[$bid] = (string) ($b['name'] ?? '');
+                    }
+                }
+            } catch (ApiError $e) {
+                // not fatal: jobName stays ''
+            }
         } finally {
             $this->client->logout();
         }
-
-        $newest = [];
-        try {
-            $rps = $this->client->paged('/restorePoints', ['orderColumn' => 'CreationTime', 'orderAsc' => 'false'], 5000, 5000,
-                fn(array $page): bool => $this->allNamesSeen($objects, $newest));
-            $newest = ObjectMapper::newestPoints($rps);
-        } catch (ApiError $e) {
-            // not fatal: objects get lastBackup null
-        }
-
-        $backupNames = [];
-        try {
-            $backups = $this->client->paged('/backups', [], 5000, 5000);
-            foreach ($backups as $b) {
-                if (is_array($b) && ($bid = (string) ($b['backupId'] ?? '')) !== '') {
-                    $backupNames[$bid] = (string) ($b['name'] ?? '');
-                }
-            }
-        } catch (ApiError $e) {
-            // not fatal: jobName stays ''
-        }
-
         return ObjectMapper::map($objects, $newest, $backupNames);
     }
 
-    private function allNamesSeen(array $objects, array &$newest): bool
+    private function allNamesSeen(array $objects, array $newest): bool
     {
         foreach ($objects as $o) {
             if (!is_array($o) || ($n = trim((string) ($o['name'] ?? ''))) === '') {

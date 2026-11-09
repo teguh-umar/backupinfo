@@ -4,6 +4,7 @@ require __DIR__ . '/bootstrap.php';
 
 require BI_ROOT . '/src/Source/Run.php';
 require BI_ROOT . '/src/Source/Event.php';
+require BI_ROOT . '/src/Source/BackupObject.php';
 require BI_ROOT . '/src/Source/BackupSource.php';
 require BI_ROOT . '/src/Source/RunHistorySource.php';
 require BI_ROOT . '/src/Source/PartialFetch.php';
@@ -213,6 +214,62 @@ $taskCalls = count(array_filter($t->calls, static fn (array $c): bool => str_con
 check('copyRuns: 60 sessions in window -> at most 50 task calls', $taskCalls <= 50, json_encode(['calls' => $taskCalls]));
 check('copyRuns: no errors', $cr['error'] === '');
 
+function oauthCalls(VeeamT $t, string $route): int
+{
+    return count(array_filter($t->calls, static fn (array $c): bool => $c['method'] === 'POST'
+        && parse_url($c['url'], PHP_URL_PATH) === '/api/' . $route));
+}
+
+// --- fetch(): one login, one logout, jobName from /backups id, restorePoints stop early
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/backupObjects', vpage([
+    ['id' => 'o1', 'name' => 'vm-app-01', 'type' => 'VM', 'restorePointsCount' => 7],
+], 1, 0));
+$t->queue('GET /api/v1/restorePoints', vpage([
+    ['id' => 'rp1', 'name' => 'vm-app-01', 'creationTime' => '2026-11-01T00:00:00Z', 'backupId' => 'b1'],
+], 1, 0));
+$t->queue('GET /api/v1/backups', vpage([
+    ['id' => 'b1', 'name' => 'JOB-DAILY'],
+], 1, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$objs = $src->fetch();
+check('fetch: object from /backupObjects', count($objs) === 1 && $objs[0]->name === 'vm-app-01' && $objs[0]->sourceKey === 'veeam:o1');
+check('fetch: lastBackup from newest restore point', $objs[0]->lastBackup === Time::epoch('2026-11-01T00:00:00Z'), json_encode($objs[0]->lastBackup));
+check('fetch: jobName from /backups id', $objs[0]->jobName === 'JOB-DAILY');
+check('fetch: restorePoints count', $objs[0]->restorePoints === 7);
+$loginCalls = oauthCalls($t, 'oauth2/token');
+$logoutCalls = oauthCalls($t, 'oauth2/logout');
+check('fetch: exactly one login', $loginCalls === 1, json_encode(['login' => $loginCalls]));
+check('fetch: exactly one logout', $logoutCalls === 1, json_encode(['logout' => $logoutCalls]));
+check('fetch: restorePoints stop fired after one page', count(array_filter($t->calls, static fn (array $c): bool => str_contains($c['url'], '/restorePoints'))) === 1);
+check('fetch: no access-xyz in serialized output', !str_contains(serialize($objs), 'access-xyz'));
+
+// --- fetch(): restorePoints stop does not read all pages when names already seen
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/backupObjects', vpage([
+    ['id' => 'o1', 'name' => 'vm-app-01', 'type' => 'VM', 'restorePointsCount' => 1],
+    ['id' => 'o2', 'name' => 'vm-db-01', 'type' => 'VM', 'restorePointsCount' => 1],
+], 2, 0));
+$t->queue('GET /api/v1/restorePoints', vpage([
+    ['id' => 'rp1', 'name' => 'vm-app-01', 'creationTime' => '2026-11-01T00:00:00Z', 'backupId' => 'b1'],
+    ['id' => 'rp2', 'name' => 'vm-db-01', 'creationTime' => '2026-11-01T01:00:00Z', 'backupId' => 'b2'],
+], 2, 0));
+$t->queue('GET /api/v1/restorePoints', vpage([
+    ['id' => 'rp3', 'name' => 'vm-app-01', 'creationTime' => '2026-11-02T00:00:00Z', 'backupId' => 'b3'],
+], 1, 0));
+$t->queue('GET /api/v1/backups', vpage([
+    ['id' => 'b1', 'name' => 'JOB-1'], ['id' => 'b2', 'name' => 'JOB-2'],
+], 2, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$objs = $src->fetch();
+$rpCalls = count(array_filter($t->calls, static fn (array $c): bool => str_contains($c['url'], '/restorePoints')));
+check('fetch: restorePoints stops once all names seen (1 page)', $rpCalls === 1, json_encode(['calls' => $rpCalls]));
+check('fetch: both objects get lastBackup', $objs[0]->lastBackup === Time::epoch('2026-11-01T00:00:00Z')
+    && $objs[1]->lastBackup === Time::epoch('2026-11-01T01:00:00Z'));
+
 done();
+
 
 
