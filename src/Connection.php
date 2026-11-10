@@ -96,6 +96,21 @@ class Connection extends CommonDBTM
         }
     }
 
+    /**
+     * Type key => the per-type form fields shown for it. Built from the type KEYS: rc1 mapped
+     * over Registry::types() values (the labels), so every type got [] and its fields were hidden.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function formFieldsByType(): array
+    {
+        $map = [];
+        foreach (array_keys(Registry::types()) as $type) {
+            $map[$type] = Registry::formFields($type);
+        }
+        return $map;
+    }
+
     public function showForm($ID, array $options = [])
     {
         $this->initForm($ID, $options);
@@ -157,10 +172,7 @@ class Connection extends CommonDBTM
         // Show/hide per-type form fields. JSON of type => field list; cells outside the chosen
         // type's list get d-none and their inputs disabled (not posted). JSON_HEX_* keeps the
         // JSON valid inside a <script> block without htmlspecialchars (which would break JS).
-        $fieldsJson = json_encode(array_map(
-            static fn(string $t): array => Registry::formFields($t),
-            Registry::types()
-        ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+        $fieldsJson = json_encode(self::formFieldsByType(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
         echo "<script>
             (function(){
                 var fields = {$fieldsJson};

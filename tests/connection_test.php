@@ -72,4 +72,20 @@ check('setup no longer secures api_secret/token', !str_contains($setup, 'connect
 
 check('secrets excluded from history', (new GlpiPlugin\Backupinfo\Connection())->getNonLoggedFields() === ['api_key', 'password']);
 
+// 0.5.0-rc2: the show/hide map is keyed by type AND built from the type keys, not the labels
+// (rc1 passed the labels to formFields(), so every type got [] and Host / API key were hidden).
+spl_autoload_register(static function (string $c): void {
+    $p = 'GlpiPlugin\\Backupinfo\\';
+    if (str_starts_with($c, $p)) {
+        $f = BI_ROOT . '/src/' . str_replace('\\', '/', substr($c, strlen($p))) . '.php';
+        if (is_file($f)) { require $f; }
+    }
+});
+$map = Connection::formFieldsByType();
+check('form map has every type key', array_keys($map) === array_keys(Registry::types()));
+check('form map vinchin shows host and api_key', in_array('host', $map['vinchin'] ?? [], true) && in_array('api_key', $map['vinchin'] ?? [], true));
+check('form map veeam shows host and api_version, no api_key', in_array('host', $map['veeam'] ?? [], true)
+    && in_array('api_version', $map['veeam'] ?? [], true) && !in_array('api_key', $map['veeam'] ?? [], true));
+check('script JSON built from formFieldsByType', str_contains($src, 'json_encode(self::formFieldsByType()'));
+
 done();

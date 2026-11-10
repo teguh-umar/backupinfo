@@ -1,5 +1,12 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.5.0-rc2 — 2026-11-10 (release candidate)
+
+- **Connection form: Host, API key and the other connection fields are shown again.** In rc1 the
+  form hid every field of the chosen type (Host, Verify TLS, Authentication, API key, Username,
+  Password, API version), so a connection could not be pointed at a server or given a key. The
+  show/hide list was built from the type labels instead of the type keys. Found on the VM.
+
 ## 0.5.0-rc1 — 2026-11-10 (release candidate)
 
 - **Veeam Backup & Replication 13 (preview).** A new connection type, **Veeam B&R 13 (preview, not
