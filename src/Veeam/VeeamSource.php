@@ -273,6 +273,20 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
         return strcmp($sb, $sa);
     }
 
+    /**
+     * $from as ISO 8601 with offset, for the createdAfterFilter query param.
+     * Falls back to $from as-is when it cannot be parsed.
+     */
+    private static function isoAfter(string $from): string
+    {
+        try {
+            $dt = new \DateTimeImmutable($from, new \DateTimeZone(date_default_timezone_get()));
+            return $dt->format(\DateTimeInterface::ATOM);
+        } catch (\Exception) {
+            return $from;
+        }
+    }
+
     public function copyRuns(string $from, string $to): array
     {
         $out = [];
@@ -280,11 +294,31 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
         $taskCallCap = 50;
         $fromEpoch = Time::epoch($from) ?? 0;
         $toEpoch = Time::epoch($to) ?? PHP_INT_MAX;
-        // orderColumn/orderAsc for /sessions are not confirmed in the 1.3-rev2 reference,
-        // so page without order and filter client-side (noted in §9b).
+        $fromIso = self::isoAfter($from);
+        // Newest first, ordinary page size, stop once a page reaches before $from.
         try {
-            $jobs = $this->client->paged('/sessions', ['typeFilter' => 'BackupCopyJob'], 5000, 5000,
-                fn(array $batch): bool => false);
+            $jobs = $this->client->paged('/sessions', [
+                'typeFilter' => 'BackupCopyJob',
+                'orderColumn' => 'CreationTime',
+                'orderAsc' => 'false',
+                'createdAfterFilter' => $fromIso,
+            ], 200, 5000,
+                function (array $batch) use ($fromEpoch): bool {
+                    $oldest = null;
+                    foreach ($batch as $job) {
+                        if (!is_array($job)) {
+                            continue;
+                        }
+                        $t = Time::epoch($job['creationTime'] ?? null);
+                        if ($t === null) {
+                            continue;
+                        }
+                        if ($oldest === null || $t < $oldest) {
+                            $oldest = $t;
+                        }
+                    }
+                    return $oldest !== null && $oldest < $fromEpoch;
+                });
             foreach ($jobs as $job) {
                 if (!is_array($job)) {
                     continue;

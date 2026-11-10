@@ -227,6 +227,40 @@ $taskCalls = count(array_filter($t->calls, static fn (array $c): bool => str_con
 check('copyRuns: 60 sessions in window -> at most 50 task calls', $taskCalls <= 50, json_encode(['calls' => $taskCalls]));
 check('copyRuns: no errors', $cr['error'] === '');
 
+// --- copyRuns(): newest first, page size 200, createdAfterFilter, stop at the window
+$from = '2026-11-01 00:00:00';
+$to = '2026-11-30 23:59:59';
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/sessions', vpage([
+    copySession('p1a', 'COPY-P1A', '2026-11-15T01:00:00Z'),
+    copySession('p1b', 'COPY-P1B', '2026-11-14T01:00:00Z'),
+], 6, 0));
+$t->queue('GET /api/v1/sessions', vpage([
+    copySession('p2a', 'COPY-P2A', '2026-10-15T01:00:00Z'), // before $from
+], 6, 200));
+$t->queue('GET /api/v1/sessions', vpage([], 6, 400)); // page 3: never requested
+$t->queue('GET /api/v1/sessions/p1a/taskSessions', vpage([
+    ['name' => 'vm-app-01', 'result' => ['result' => 'Success']],
+    ['name' => 'vm-app-01', 'result' => ['result' => 'Success']],
+], 2, 0));
+$t->queue('GET /api/v1/sessions/p1b/taskSessions', vpage([
+    ['name' => 'vm-app-01', 'result' => ['result' => 'Success']],
+    ['name' => 'vm-app-01', 'result' => ['result' => 'Success']],
+], 2, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$cr = $src->copyRuns($from, $to);
+$sessionUrls = array_column(array_filter($t->calls, static fn (array $c): bool => str_contains($c['url'], '/api/v1/sessions') && !str_contains($c['url'], '/taskSessions')), 'url');
+check('copyRuns: URLs carry orderColumn, orderAsc and createdAfterFilter',
+    str_contains(implode(' ', $sessionUrls), 'orderColumn=CreationTime')
+    && str_contains(implode(' ', $sessionUrls), 'orderAsc=false')
+    && str_contains(implode(' ', $sessionUrls), 'createdAfterFilter='),
+    json_encode($sessionUrls));
+$sessionsCalls = count($sessionUrls);
+check('copyRuns: page 3 never requested when page 2 reaches before $from', $sessionsCalls === 2, json_encode(['sessionsCalls' => $sessionsCalls]));
+check('copyRuns: only in-window sessions produce copy events', count($cr['rows']) === 4, json_encode(count($cr['rows'])));
+check('copyRuns: no errors', $cr['error'] === '');
+
 function oauthCalls(VeeamT $t, string $route): int
 {
     return count(array_filter($t->calls, static fn (array $c): bool => $c['method'] === 'POST'
