@@ -268,6 +268,60 @@ This all lives in `src/Tickets/TicketInput.php` (pure) and `src/Tickets/TicketSe
    - A source check that `TicketService.php` contains `TicketInput::split(`, `Ticket_User`, `Problem_User` and `CommonITILActor::ASSIGN`.
    - The existing `TicketInput::build` tests stay green unchanged.
 
+### Review round 2 (owner, 2026-11-10)
+
+**Status.** R1–R8 at `f43f390` re-run green (`SUITES OK`). R1, R2, R4, R6, R7 and R8 are accepted.
+
+**Order values confirmed (owner, 2026-11-10).** I checked the 1.3-rev2 reference myself:
+- `GET /sessions` takes:
+  - `orderColumn`, one of `Name`, `SessionType`, `CreationTime`, `EndTime`, `State`, `Result`, `InitiatedBy`;
+  - `orderAsc`, a boolean;
+  - `createdAfterFilter`, a date-time.
+- `GET /restorePoints` takes:
+  - `orderColumn`, one of `CreationTime`, `PlatformId`, `BackupId`;
+  - `orderAsc`;
+  - `createdAfterFilter` and `createdBeforeFilter`.
+
+Use them. Paging without an order is no longer an accepted deviation.
+
+#### R10 – `runs()` must page newest first (critical)
+
+**Problem.** `runs()` pages `/sessions` with no order, but stops on the first page that `$pageKnown` accepts. If the server's default order is oldest first, page 1 holds only old, already-stored runs, the loop stops there, and **new runs are never stored**. Nothing warns about it.
+
+**Fix.** Send `orderColumn=CreationTime` and `orderAsc=false` on every `/sessions` page. In the query array, pass `'orderAsc' => 'false'`: `http_build_query` must not turn a PHP `false` into `0`.
+
+**Test.**
+- Each `/sessions` request URL contains `orderColumn=CreationTime` and `orderAsc=false`.
+- This test fails before the fix.
+
+#### R11 – `copyRuns()` newest first, ordinary page size, stop at the window
+
+**Problem.** `copyRuns()` reads up to 5000 sessions in pages of 5000, with no order, on every sync.
+
+**Fix.**
+- Page size 200, `orderColumn=CreationTime`, `orderAsc=false`, `createdAfterFilter=<$from as ISO 8601 with offset>`.
+- Keep the client-side window filter as a guard.
+- Also stop paging when a page's oldest `creationTime` is before `$from`.
+- Keep the 50 task-call cap.
+
+**Tests.**
+- The URLs carry the order and `createdAfterFilter`.
+- With 3 pages where page 2 already reaches before `$from`, page 3 is never requested.
+
+#### R12 – Tests still missing from plan Task 9 Step 1
+
+Add these to `tests/veeam_source_test.php`:
+- **403 on authorization events:** a 403 on `/authorization/events` gives `rows` `[]` and `error` `''`.
+- **500 on authorization events:** a 500 on `/authorization/events` gives an error containing `/api/v1/authorization/events`.
+- **403 on malware events:** the same 403 rule on `/malwareDetection/events`.
+- **Window filter:** `systemLogs` keeps only rows whose `creationTime` falls in the window.
+- **Targets:** `targets()` through the source skips the `ExtendableRepository` parent and keeps its extents.
+- **Restore points:** fetch sends `orderColumn=CreationTime` and `orderAsc=false` to `/restorePoints`.
+
+#### Logging
+
+Fill §9b for R9 (above), R10, R11 and R12. R9 is unchanged by this round.
+
 ### Rules for this round
 
 - Rules §3 and §5 apply.
@@ -302,3 +356,6 @@ This all lives in `src/Tickets/TicketInput.php` (pure) and `src/Tickets/TicketSe
 | R7 | 8af241a | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php, tests/veeam_probe_test.php (deleted) | PROBE_REQUIRED shape check covers all probe endpoints |
 | R8 | 6f0ceda | SUITES OK | src/Veeam/TargetMapper.php, src/Veeam/RunMapper.php, src/RestoreTest.php, src/Veeam/Client.php, src/Source/Registry.php, install/install.php, tests/* | orderColumn/orderAsc for /sessions unconfirmed in 1.3-rev2 reference (paging unordered); dedupe target types not confirmed (left as '') |
 | R9 | | | | |
+| R10 | | | | |
+| R11 | | | | |
+| R12 | | | | |
