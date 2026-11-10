@@ -110,6 +110,18 @@ $runs = $src->runs(function (array $ids) use (&$seenPageKnown): bool {
 check('runs: only Working sessions gives 0 runs', $runs['runs'] === []);
 check('runs: pageKnown receives empty array', $seenPageKnown === [[]], json_encode($seenPageKnown));
 
+// --- runs(): newest first (orderColumn=CreationTime, orderAsc=false)
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/sessions', vpage([stoppedSession('s1')], 1, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$runs = $src->runs(fn(array $ids): bool => true, 10, 100);
+$sc = sessionsCalls($t);
+check('runs: orderColumn=CreationTime and orderAsc=false on /sessions',
+    str_contains($sc[0]['url'], 'orderColumn=CreationTime') && str_contains($sc[0]['url'], 'orderAsc=false'),
+    json_encode(array_column($sc, 'url')));
+check('runs: 1 run stored', count($runs['runs']) === 1);
+
 // --- failureReasons(): reason comes from the Failed task
 $t = new VeeamT();
 $t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));

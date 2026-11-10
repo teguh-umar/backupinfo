@@ -164,6 +164,8 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
             try {
                 $res = $this->client->get('/sessions', [
                     'typeFilter' => implode(',', self::RUN_TYPES),
+                    'orderColumn' => 'CreationTime',
+                    'orderAsc' => 'false',
                     'skip' => $skip,
                     'limit' => $pageSize,
                 ]);
