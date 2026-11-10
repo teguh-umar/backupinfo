@@ -236,6 +236,38 @@ These were decided by the user, or by the owner in the plan:
   - **Test:** a POST through `sendRequest` to `/api/v1/jobs/x/start` throws, with no transport call.
 - **`install.php`:** `api_version` is added twice, once in `$added` and once in a separate `fieldExists` block. Keep the `$added` entry and delete the extra block.
 
+### R9 – Ticket and Problem creation: no rule re-routing (user decision, 2026-11-10)
+
+**Why.** Production GLPI runs business rules, plus the Behaviors and Escalade plugins, on ticket add.
+- A rule can match text such as an IP prefix in the failure Reason and replace the template's groups.
+- Behaviors ("Use the technician's group", on add) replaces the groups when a technician is in the add input. `_skip_rules` does not stop it.
+- Escalade ("Remove old assign group on new group assign") keeps only ONE assigned group.
+
+This all lives in `src/Tickets/TicketInput.php` (pure) and `src/Tickets/TicketService.php`. The tests go in `tests/ticket_plan_test.php`.
+
+1. **`TicketInput::split(array $input): array{add: array, technicians: list<int>}`**
+   - Removes `_users_id_assign` from the input. It can be an int or a list, and the result is a list of positive ints.
+   - Sets `'_skip_rules' => true` in `add`.
+   - Everything else is unchanged: groups, observers, requester, category.
+2. **`TicketService::run`, for Incidents and Problems:**
+   - Build the input with `TicketInput::build`, then `split`.
+   - Add the ticket or Problem with `add`.
+   - Then add each technician:
+     - `(new \Ticket_User())->add(['tickets_id' => $id, 'users_id' => $u, 'type' => \CommonITILActor::ASSIGN])`;
+     - for a Problem, `(new \Problem_User())->add(['problems_id' => $pid, 'users_id' => $u, 'type' => \CommonITILActor::ASSIGN])`.
+   - A failed actor add goes in `errors` and does not undo the ticket.
+   - Add the `use` lines.
+3. **`TicketInput::warnings`** gets two more lines, exact copy:
+   - When `itilcategories_id` is empty: `sprintf(__('Template "%s" sets no category; GLPI may refuse to solve or close the ticket without one.', 'backupinfo'), $template)`.
+   - When `_groups_id_assign` holds more than one group: `sprintf(__('Template "%1$s" assigns %2$d groups; only one is kept on production (Escalade). Assign one group and put other teams as observers or technicians.', 'backupinfo'), $template, $n)`.
+4. **Tests:**
+   - `split` with `_users_id_assign` `[5, 0, 7]` gives technicians `[5, 7]`; `add` has no `_users_id_assign` and has `_skip_rules === true`; groups and category are kept.
+   - `split` with no technician gives `[]`.
+   - A template without a category warns.
+   - A template with 2 assign groups warns, and one with 1 group does not.
+   - A source check that `TicketService.php` contains `TicketInput::split(`, `Ticket_User`, `Problem_User` and `CommonITILActor::ASSIGN`.
+   - The existing `TicketInput::build` tests stay green unchanged.
+
 ### Rules for this round
 
 - Rules §3 and §5 apply.
@@ -269,3 +301,4 @@ These were decided by the user, or by the owner in the plan:
 | R6 | b633bf6 | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php | orderColumn/orderAsc for /sessions and /restorePoints unconfirmed in 1.3-rev2 reference; paging unordered |
 | R7 | 8af241a | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php, tests/veeam_probe_test.php (deleted) | PROBE_REQUIRED shape check covers all probe endpoints |
 | R8 | 6f0ceda | SUITES OK | src/Veeam/TargetMapper.php, src/Veeam/RunMapper.php, src/RestoreTest.php, src/Veeam/Client.php, src/Source/Registry.php, install/install.php, tests/* | orderColumn/orderAsc for /sessions unconfirmed in 1.3-rev2 reference (paging unordered); dedupe target types not confirmed (left as '') |
+| R9 | | | | |
