@@ -355,7 +355,7 @@ Fill §9b for R9 (above), R10, R11 and R12. R9 is unchanged by this round.
 | R6 | b633bf6 | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php | orderColumn/orderAsc for /sessions and /restorePoints unconfirmed in 1.3-rev2 reference; paging unordered |
 | R7 | 8af241a | SUITES OK | src/Veeam/VeeamSource.php, tests/veeam_source_test.php, tests/veeam_probe_test.php (deleted) | PROBE_REQUIRED shape check covers all probe endpoints |
 | R8 | 6f0ceda | SUITES OK | src/Veeam/TargetMapper.php, src/Veeam/RunMapper.php, src/RestoreTest.php, src/Veeam/Client.php, src/Source/Registry.php, install/install.php, tests/* | orderColumn/orderAsc for /sessions unconfirmed in 1.3-rev2 reference (paging unordered); dedupe target types not confirmed (left as '') |
-| R9 | | | | |
-| R10 | | | | |
-| R11 | | | | |
-| R12 | | | | |
+| R9 | 26c5fc7 | SUITES OK | split: technicians [5, 7], 0 dropped; warning: template with 2 assign groups warns; service: splits the input before adding | none |
+| R10 | 812d809 | SUITES OK | runs: orderColumn=CreationTime and orderAsc=false on /sessions | none |
+| R11 | bc26f7a | SUITES OK | copyRuns: URLs carry orderColumn, orderAsc and createdAfterFilter; copyRuns: page 3 never requested when page 2 reaches before $from | none |
+| R12 | 2c7183d | SUITES OK | systemLogs: 403 on authorization events gives rows [] and error ''; targets: skips ExtendableRepository parent, keeps extents; fetch: /restorePoints carries orderColumn=CreationTime and orderAsc=false | none |
