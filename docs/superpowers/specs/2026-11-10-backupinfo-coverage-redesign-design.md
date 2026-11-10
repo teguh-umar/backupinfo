@@ -1,7 +1,9 @@
 # Backup Info: Coverage page redesign (design)
 
-Date: 2026-11-10. Owner session: backup-info-09. Target version: **0.6.0** (my call; 0.5.0 is the Veeam
-release, now at rc1).
+Date: 2026-11-10. Owner session: backup-info-09.
+
+**Status: on hold.** The user is holding version 0.6.0 for discussion (2026-11-10). Do not write a plan or
+build from this document until the user releases it. The version and branch in §5 are a proposal only.
 
 ## 1. Intent
 
@@ -40,7 +42,7 @@ This redesign brings that portal's **Backup coverage** tab into GLPI, built on G
    user can see.
    - Columns: Cluster, Platform, Coverage (bar and %), Protected, Expired, No backup, Notes.
    - Notes say "No backup source yet" (§4.4).
-   - A last row, **Cluster unknown**, holds the VMs whose cluster could not be found (§4.2).
+   - A last row, **Unknown / review**, holds the VMs whose cluster could not be found (§4.2).
    - Clicking a cluster filters the VM list.
 5. **VM list.** Every must-backup VM the user can see.
    - Search on VM, cluster, job or IP. Status filter, defaulting to "Needs action (no backup or
@@ -94,14 +96,16 @@ active entities, not deleted and not templates. Backup objects are matched to Co
   - cluster membership stays manual;
   - Backup Info reads core tables only and never calls `hypervisor` classes.
 
-  Until it ships, Sangfor VMs fall in **Cluster unknown**.
-- **Cluster unknown:** any VM with no host, a host in no cluster, or a host in more than one cluster.
+  Until it ships, Sangfor VMs fall in **Unknown / review**.
+- **Unknown / review** (the user's label; Indonesian UI text "Tidak diketahui / review"): any VM with
+  no host, a host in no cluster, or a host in more than one cluster. The label says these rows need an
+  admin to check the data.
   It is counted like every other VM. In the multi-cluster case, the Notes cell names the clusters
   (my call).
 
 **Must-backup Computers that are not VMs:**
 - Hypervisor hosts are never counted (§4.5, the user's rule).
-- Any other must-backup Computer that no host lists as a VM goes to **Cluster unknown**. This
+- Any other must-backup Computer that no host lists as a VM goes to **Unknown / review**. This
   includes physical servers and VMs whose host is missing (my call).
 - The Notes cell of that row explains that it holds both cases. Telling a physical server from an
   orphan VM is not in scope.
@@ -130,7 +134,7 @@ matched backup object. Both must-backup and other VMs count here.
   - Only clusters that appear in the cluster table count, that is, clusters with at least one visible
     must-backup VM.
   - A hypervisor cluster whose hosts have no VM rows yet (Sangfor until `hypervisor` ships) does not
-    appear. Its VMs are in Cluster unknown.
+    appear. Its VMs are in Unknown / review.
 
 ### 4.5 Only VMs are backed up; hosts and clusters never are
 
@@ -203,7 +207,7 @@ portal. Colours carry the status: green Protected, amber Expired, red No backup,
 - **Performance.** Hundreds of VMs and tens of clusters. The page must build in one request without
   N+1 queries per VM.
 
-- **Branch and version** (my call):
+- **Branch and version** (my proposal; on hold, the user is discussing 0.6.0):
   - Build on a new branch `feat/v0.6-coverage` cut from `feat/v0.5-veeam`, after 0.5.0-rc1.
   - Any install/upgrade step (environment settings) is keyed to 0.6.0. No new table is expected; if
     the builder needs one, its name is claimed in the suite hub through the orchestrator first.
@@ -216,7 +220,7 @@ portal. Colours carry the status: green Protected, amber Expired, red No backup,
 - The exact Setup UI for the environment keywords and Addressing mappings: a new Setup tab or a
   section in an existing one.
 - How "Show in list" and the cluster click pass the filter to the VM list: query string or JS.
-- Sorting inside the cluster table. Default by name, Cluster unknown last.
+- Sorting inside the cluster table. Default by name, Unknown / review last.
 - Whether the action list has its own cap with a "Show all in list" link, or is scrollable as in the
   reference.
 - Migration and upgrade steps for the environment settings, following the plugin's install pattern.
