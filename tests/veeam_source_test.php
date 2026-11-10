@@ -365,6 +365,10 @@ $src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
 $pa = $src->probeAudit(5);
 check('probeAudit: /sessions (BackupJob) key present', isset($pa['raw']['/sessions (BackupJob)']));
 check('probeAudit: /sessions (BackupCopyJob) key present', isset($pa['raw']['/sessions (BackupCopyJob)']));
+// Copy-job sessions are sessions: checked against the /sessions shape (row lacks creationTime).
+check('probeAudit: copy-job sessions use the /sessions shape',
+    ($pa['raw']['/sessions (BackupCopyJob)'][0]['_check'] ?? '') === 'unexpected shape: missing creationTime',
+    json_encode($pa['raw']['/sessions (BackupCopyJob)'][0] ?? null));
 
 // --- probeAudit(): task-session key present when /sessions has a row
 $t = new VeeamT();

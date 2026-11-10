@@ -467,7 +467,7 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
         if ($sErr !== '') {
             $errors[] = $sErr;
         }
-        list($cRaw, $cErr) = $this->probeEndpoint('/sessions', ['typeFilter' => 'BackupCopyJob'] + $params, $limit, self::PROBE_REQUIRED['/sessions/{id}/taskSessions']);
+        list($cRaw, $cErr) = $this->probeEndpoint('/sessions', ['typeFilter' => 'BackupCopyJob'] + $params, $limit, self::PROBE_REQUIRED['/sessions']);
         $raw['/sessions (BackupCopyJob)'] = $cRaw;
         if ($cErr !== '') {
             $errors[] = $cErr;
