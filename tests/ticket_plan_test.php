@@ -51,12 +51,37 @@ $pre = ['_users_id_requester' => '7', '_groups_id_assign' => ['3', '4'], '_suppl
 $in  = TicketInput::build($pre, ['name' => 'Backup failed: SRV-A', 'type' => 1, 'entities_id' => 3, 'items_id' => ['Computer' => [11]]]);
 check('template: actors, category and urgency copied', $in['_groups_id_assign'] === ['3', '4'] && $in['_suppliers_id_assign'] === ['2'] && $in['_users_id_requester'] === '7' && $in['itilcategories_id'] === '9' && $in['urgency'] === '4');
 check('template: own name, entity and Computer win; template status and items never copied', $in['name'] === 'Backup failed: SRV-A' && $in['entities_id'] === 3 && $in['items_id'] === ['Computer' => [11]] && !isset($in['status']));
-check('template warnings: nobody assigned, no requester', count(TicketInput::warnings([], 'X')) === 2 && TicketInput::warnings($pre, 'X') === []);
+check('template warnings: nobody assigned, no requester, no category', count(TicketInput::warnings([], 'X')) === 3);
+check('template warnings: $pre has 2 assign groups -> one group warning', count(TicketInput::warnings($pre, 'X')) === 1 && str_contains(TicketInput::warnings($pre, 'X')[0], 'assigns 2 groups'));
 check('template warnings: none selected', count(TicketInput::warnings([], '')) === 1);
+
+// --- split: technicians go out of the add input, rules skipped
+$in = ['_users_id_assign' => [5, 0, 7], '_groups_id_assign' => ['3'], 'itilcategories_id' => '9', 'name' => 'T'];
+$sp = TicketInput::split($in);
+check('split: technicians [5, 7], 0 dropped', $sp['technicians'] === [5, 7], json_encode($sp['technicians']));
+check('split: add keeps groups and category', $sp['add']['_groups_id_assign'] === ['3'] && $sp['add']['itilcategories_id'] === '9');
+check('split: add has no _users_id_assign', !isset($sp['add']['_users_id_assign']));
+check('split: add skips rules', $sp['add']['_skip_rules'] === true);
+
+$sp = TicketInput::split(['name' => 'T']);
+check('split: no technician gives []', $sp['technicians'] === [] && $sp['add']['_skip_rules'] === true);
+
+// --- warnings: missing category and multiple assign groups
+$w = TicketInput::warnings(['_users_id_requester' => '7', '_groups_id_assign' => ['3'], 'itilcategories_id' => ''], 'X');
+check('warning: template without a category warns', str_contains(implode('|', $w), 'sets no category'));
+$w = TicketInput::warnings(['_users_id_requester' => '7', '_groups_id_assign' => ['3', '4'], 'itilcategories_id' => '9'], 'X');
+check('warning: template with 2 assign groups warns', str_contains(implode('|', $w), 'assigns 2 groups'));
+$w = TicketInput::warnings(['_users_id_requester' => '7', '_groups_id_assign' => ['3'], 'itilcategories_id' => '9'], 'X');
+check('warning: template with 1 assign group does not warn about groups', $w === []);
 
 // --- wiring
 $read = static fn (string $rel): string => (string) @file_get_contents(BI_ROOT . '/' . $rel);
-$svc  = $read('src/Tickets/TicketService.php');
+
+// --- wiring: service links technicians without rule re-routing
+$svc = $read('src/Tickets/TicketService.php');
+check('service: splits the input before adding', str_contains($svc, 'TicketInput::split('));
+check('service: links Ticket_User as ASSIGN', str_contains($svc, 'Ticket_User') && str_contains($svc, 'CommonITILActor::ASSIGN'));
+check('service: links Problem_User as ASSIGN', str_contains($svc, 'Problem_User') && str_contains($svc, 'CommonITILActor::ASSIGN'));
 check('service: off until enabled, dry run writes nothing', str_contains($svc, "if (!\$dry && empty(\$cfg['tickets_enabled']))") && substr_count($svc, 'if ($dry) {') === 3);
 check('service: never updates or closes a ticket (adds and links only)', !preg_match('/(new Ticket\(\)|\$ticket)->update\(|->delete\(/', $svc) && !str_contains($svc, "'status' =>"));
 check('service: link row written only after the add succeeded', strpos($svc, "if (!\$id) {") < strpos($svc, '$DB->insert(self::TABLE'));

@@ -2,6 +2,7 @@
 
 namespace GlpiPlugin\Backupinfo\Tickets;
 
+use CommonITILActor;
 use CommonITILObject;
 use Config;
 use GlpiPlugin\Backupinfo\AuditData;
@@ -11,9 +12,11 @@ use Item_Problem;
 use ITILFollowup;
 use Problem;
 use Problem_Ticket;
+use Problem_User;
 use ProblemTemplatePredefinedField;
 use Ticket;
 use TicketTemplatePredefinedField;
+use Ticket_User;
 
 /**
  * Opens the plugin's Incidents and Problems (0.4.0). Needs GLPI. Only adds tickets and links:
@@ -66,8 +69,7 @@ final class TicketService
             if ($dry) {
                 continue;
             }
-            $ticket = new Ticket();
-            $id     = $ticket->add(TicketInput::build($tPre, [
+            list($add, $technicians) = TicketInput::split(TicketInput::build($tPre, [
                 'name'               => $i['name'],
                 'content'            => $i['content'],
                 'type'               => Ticket::INCIDENT_TYPE,
@@ -75,9 +77,16 @@ final class TicketService
                 'tickettemplates_id' => $tt,
                 'items_id'           => ['Computer' => [$i['computers_id']]],
             ]));
+            $ticket = new Ticket();
+            $id     = $ticket->add($add);
             if (!$id) {
                 $out['errors'][] = 'Ticket not created: ' . $i['name'];
                 continue;
+            }
+            foreach ($technicians as $u) {
+                if (!(new Ticket_User())->add(['tickets_id' => $id, 'users_id' => $u, 'type' => CommonITILActor::ASSIGN])) {
+                    $out['errors'][] = 'Technician not added to ticket #' . $id;
+                }
             }
             $DB->insert(self::TABLE, ['runs_id' => $i['runs_id'], 'computers_id' => $i['computers_id'], 'tickets_id' => (int) $id,
                 'problems_id' => 0, 'date_creation' => date('Y-m-d H:i:s', $nowS)]);
@@ -127,13 +136,14 @@ final class TicketService
             if ($dry) {
                 continue;
             }
-            $problem = new Problem();
-            $pid     = $problem->add(TicketInput::build($pPre, [
+            list($add, $technicians) = TicketInput::split(TicketInput::build($pPre, [
                 'name'                => $name,
                 'content'             => '<p>' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . '. Opened automatically by Backup Info; the Incidents are linked.</p>',
                 'entities_id'         => $computers[$c]['entities_id'] ?? 0,
                 'problemtemplates_id' => $pt,
             ]));
+            $problem = new Problem();
+            $pid     = $problem->add($add);
             if (!$pid) {
                 $out['errors'][] = 'Problem not created: ' . $name;
                 continue;
@@ -141,6 +151,11 @@ final class TicketService
             (new Item_Problem())->add(['problems_id' => (int) $pid, 'itemtype' => 'Computer', 'items_id' => $c]);
             foreach ($ticketIds as $tid) {
                 self::link((int) $pid, $tid);
+            }
+            foreach ($technicians as $u) {
+                if (!(new Problem_User())->add(['problems_id' => $pid, 'users_id' => $u, 'type' => CommonITILActor::ASSIGN])) {
+                    $out['errors'][] = 'Technician not added to problem #' . $pid;
+                }
             }
         }
         if (!$dry) {
