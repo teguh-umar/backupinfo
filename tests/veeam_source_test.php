@@ -12,6 +12,7 @@ require BI_ROOT . '/src/Source/AuditSource.php';
 require BI_ROOT . '/src/Source/AuditProbeableSource.php';
 require BI_ROOT . '/src/Source/ProbeableSource.php';
 require BI_ROOT . '/src/Source/Time.php';
+require BI_ROOT . '/src/Source/Target.php';
 require BI_ROOT . '/src/Http/Transport.php';
 require BI_ROOT . '/src/Http/CurlTransport.php';
 require BI_ROOT . '/src/Veeam/ApiError.php';
@@ -382,6 +383,69 @@ $src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
 $pa = $src->probeAudit(5);
 check('probeAudit: /sessions/{id}/taskSessions key present when /sessions has a row',
     isset($pa['raw']['/sessions/{id}/taskSessions']));
+
+// --- R12: plan Task 9 Step 1 tests still missing
+
+// --- systemLogs: 403 on authorization events -> rows [] and error ''
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/authorization/events', vj([], 403));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$sl = $src->systemLogs('2026-11-01 00:00:00', '2026-11-30 23:59:59');
+check('systemLogs: 403 on authorization events gives rows [] and error \'\'', $sl['rows'] === [] && $sl['error'] === '', json_encode($sl));
+
+// --- systemLogs: 500 on authorization events -> error names the endpoint
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/authorization/events', vj(['errorCode' => 'ERR', 'message' => 'boom'], 500));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$sl = $src->systemLogs('2026-11-01 00:00:00', '2026-11-30 23:59:59');
+check('systemLogs: 500 on authorization events names /api/v1/authorization/events', str_contains($sl['error'], '/api/v1/authorization/events'), $sl['error']);
+
+// --- systemAlarms: 403 on malware events -> rows [] and error ''
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/malwareDetection/events', vj([], 403));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$sa = $src->systemAlarms('2026-11-01 00:00:00', '2026-11-30 23:59:59');
+check('systemAlarms: 403 on malware events gives rows [] and error \'\'', $sa['rows'] === [] && $sa['error'] === '', json_encode($sa));
+
+// --- systemLogs: window filter keeps only rows whose creationTime falls in the window
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/authorization/events', vpage([
+    ['id' => 'e-in', 'creationTime' => '2026-11-10T01:00:00Z', 'state' => 'Granted'],
+    ['id' => 'e-before', 'creationTime' => '2026-10-01T01:00:00Z', 'state' => 'Granted'],
+    ['id' => 'e-after', 'creationTime' => '2026-12-01T01:00:00Z', 'state' => 'Granted'],
+], 3, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$sl = $src->systemLogs('2026-11-01 00:00:00', '2026-11-30 23:59:59');
+check('systemLogs: window filter keeps only in-window creationTime', count($sl['rows']) === 1 && $sl['rows'][0]['ref'] === 'e-in', json_encode(array_column($sl['rows'], 'ref')));
+
+// --- targets: skips ExtendableRepository parent, keeps its extents
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/backupInfrastructure/repositories/states', vpage([
+    ['name' => 'repo-main', 'type' => 'ExtendableRepository', 'capacityGB' => 1000, 'freeGB' => 500, 'usedSpaceGB' => 500, 'isOnline' => true],
+    ['name' => 'repo-main\\extent-1', 'type' => 'Windows', 'capacityGB' => 500, 'freeGB' => 250, 'usedSpaceGB' => 250, 'isOnline' => true],
+], 2, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$targets = $src->targets();
+check('targets: skips ExtendableRepository parent, keeps extents', count($targets['rows']) === 1 && $targets['rows'][0]['name'] === 'repo-main\\extent-1', json_encode(array_column($targets['rows'], 'name')));
+check('targets: no errors', $targets['error'] === '');
+
+// --- fetch: sends orderColumn=CreationTime and orderAsc=false to /restorePoints
+$t = new VeeamT();
+$t->queue('POST /api/oauth2/token', vj(['access_token' => 'access-xyz', 'refresh_token' => 'refresh-xyz', 'expires_in' => 900]));
+$t->queue('GET /api/v1/backupObjects', vpage([['id' => 'o1', 'name' => 'vm-app-01', 'type' => 'VM', 'restorePointsCount' => 7]], 1, 0));
+$t->queue('GET /api/v1/restorePoints', vpage([['id' => 'rp1', 'name' => 'vm-app-01', 'creationTime' => '2026-11-01T00:00:00Z', 'backupId' => 'b1']], 1, 0));
+$t->queue('GET /api/v1/backups', vpage([['id' => 'b1', 'name' => 'JOB-DAILY']], 1, 0));
+$src = new VeeamSource(new Client('vbr.example.test', $t, 'u', 'p'));
+$objs = $src->fetch();
+$rpCalls = array_values(array_filter($t->calls, static fn (array $c): bool => str_contains($c['url'], '/restorePoints')));
+check('fetch: /restorePoints carries orderColumn=CreationTime and orderAsc=false',
+    str_contains($rpCalls[0]['url'], 'orderColumn=CreationTime') && str_contains($rpCalls[0]['url'], 'orderAsc=false'),
+    json_encode(array_column($rpCalls, 'url')));
 
 done();
 
