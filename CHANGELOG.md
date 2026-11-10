@@ -1,5 +1,32 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.5.0-rc1 — 2026-11-10 (release candidate)
+
+- **Veeam Backup & Replication 13 (preview).** A new connection type, **Veeam B&R 13 (preview, not
+  verified on a server)**. Read-only: login and logout are the only requests that are not reads.
+  - It reads backup objects, restore points, job and backup copy sessions (newest first), the
+    per-VM task sessions with the failure reason, repository states (capacity, used, free,
+    online), and authorization and malware events.
+  - New connection field **API version** (default `1.3-rev2` for 13.1; `1.3-rev1` for 13.0.1).
+    The form shows only the fields of the chosen type.
+  - Probe shows one `_check` line per endpoint: OK, unexpected shape, refused (role?) or error.
+  - Installer guide: `docs/veeam-installer-checklist.md` (service account, API version, TLS,
+    reading Probe, what to verify on the first server).
+- **Declared gaps.** When a source cannot provide a section, the Audit evidence page and the Excel
+  export say so in that section's note. For Veeam:
+  - Coverage: the platform VM list (protected or not) is not read.
+  - Restore tests: SureBackup verifications are not imported.
+  - Activity: no job operation log, no system alarms, no login source IP. Authorization events need
+    Security Administrator, and malware events need Incident API Operator.
+  - Targets: no tape.
+- **Brand-neutral sources.** Sources share one HTTP transport, one run-history and failure-reason
+  interface, and per-type form fields, defaults and gaps. Vinchin works as before.
+- **Automatic Incidents and Problems.** They are created without GLPI business rules
+  (`_skip_rules`), and the template's technicians are added after the ticket exists, so production
+  rules cannot re-route them. The dry run also warns when a template sets no category, or assigns
+  more than one group (only one is kept on production).
+- **Manual.** A **Manual** link in the Backup Info menu and in Setup opens the user manual when it
+  ships with the plugin. It warns when the manual documents an older version.
 ## 0.4.0-rc6 — 2026-11-06 (release candidate)
 
 - **Links to GLPI assets and restore tests.**
