@@ -8,3 +8,6 @@ python/
 
 # user reference docs (vendor API docs); study only, never shipped
 /Source/
+
+# build copy of the suite manual (tools/build_zip.py); the source lives at <suite>/docs/manual/
+/docs/manual.md

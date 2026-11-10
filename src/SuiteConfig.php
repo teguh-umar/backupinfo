@@ -187,6 +187,9 @@ class SuiteConfig
         $problems  = $bridge->problems();
         $fieldsBad = !$bridge->available() || $problems !== [];
         $editing   = isset($_GET[self::CONNECTION_PARAM]);
+        // 0.5.0-rc1: the user manual (suite rule 2026-11-09).
+        echo '<p class="mb-3"><a href="' . htmlescape(Html::getPrefixedUrl('/plugins/backupinfo/front/manual.php')) . '">'
+            . '<i class="ti ti-book me-1"></i>' . __s('Manual', 'backupinfo') . '</a></p>';
         echo '<div class="card mb-3"><div class="card-header">' . self::tabNav($fieldsBad, $editing) . '</div><div class="card-body">';
         echo '<div class="tab-content">';
         echo '<div class="tab-pane active show" id="backupinfo-tab-connections" role="tabpanel">';

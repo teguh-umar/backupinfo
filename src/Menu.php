@@ -47,6 +47,14 @@ class Menu
                 'icon'  => 'ti ti-zoom-scan',
             ];
         }
+        // 0.5.0-rc1: the user manual (suite rule 2026-11-09), for anyone who may see the plugin.
+        if (Session::haveRight(RightDefinition::VIEW, READ)) {
+            $options['manual'] = [
+                'title' => __('Manual', 'backupinfo'),
+                'page'  => '/plugins/backupinfo/front/manual.php',
+                'icon'  => 'ti ti-book',
+            ];
+        }
         if ($options === []) {
             return null;
         }

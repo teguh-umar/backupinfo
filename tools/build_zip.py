@@ -14,6 +14,10 @@ import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHARED = os.path.normpath(os.path.join(ROOT, '..', '..', 'shared', 'pgnsuite'))
+# User manual (suite rule 2026-11-09): written by Copilot at the suite root, copied here before
+# each build; docs/manual.md is the one docs file that ships. Missing source: build without it.
+MANUAL_SRC = os.path.normpath(os.path.join(ROOT, '..', '..', 'docs', 'manual', 'backupinfo.md'))
+MANUAL = 'docs/manual.md'
 TOP = 'backupinfo'
 
 FILES = ['setup.php', 'hook.php', 'composer.json']
@@ -36,9 +40,24 @@ def version():
     return m.group(1)
 
 
+def copy_manual():
+    dst = os.path.join(ROOT, *MANUAL.split('/'))
+    if not os.path.isfile(MANUAL_SRC):
+        print('manual: %s not found, building without it' % MANUAL_SRC)
+        if os.path.exists(dst):
+            os.remove(dst)  # never ship a stale copy
+        return
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    with open(MANUAL_SRC, 'rb') as src, open(dst, 'wb') as out:
+        out.write(src.read())
+    print('manual: copied to ' + MANUAL)
+
+
 def entries():
     for name in FILES:
         yield name
+    if os.path.isfile(os.path.join(ROOT, *MANUAL.split('/'))):
+        yield MANUAL
     for d in DIRS:
         base = os.path.join(ROOT, d)
         for root, dirs, files in os.walk(base):
@@ -58,6 +77,7 @@ def main():
         # A zip for this version may already be deployed: never replace it silently.
         # Bump the version (rule 8: a fix is a new -rcN), or delete the old zip by hand.
         sys.exit('%s already exists; bump the version in setup.php or remove it first' % os.path.basename(out))
+    copy_manual()
     with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
         for rel in entries():
             z.write(os.path.join(ROOT, rel), TOP + '/' + rel)
