@@ -1,5 +1,31 @@
 # Changelog — Backup Info (backupinfo)
 
+## Unreleased (feat/backup-summary)
+
+Backup summary on the Backup objects page (design 2026-11-11, from the user's "Backup summary"
+reference). Version number not decided yet.
+
+- **Summary cards** on top of Backup objects. They read the plugin's stored objects only, with no
+  call to the backup system:
+  - Protected objects, Fresh backups (≤ 24 hours), Total data, Restore points, and Needs
+    attention.
+  - **Last backup age**: one bar with five segments (≤ 24 hours, 1–3 days, 3–7 days,
+    > 7 days, No timestamp). Clicking a segment filters the table, and more than one segment can
+    be on.
+  - **By kind**, **Needs attention** (broken chain, source deleted, last run failed, no backup,
+    older than its RPO), and **Largest objects**.
+- **Source switch**: All sources, or one active connection. The cards count only the objects you
+  may see, and leave out inactive connections.
+- **Table**:
+  - a new **Age** column;
+  - a **Needs attention** toggle that combines with the other buttons;
+  - "Needs review or not found" is now called **Not matched** (same rows).
+- **Menu entry "Backup summary"**: opens the same page on the cards, with every object listed.
+- **Export (Excel)**: sheet **Summary** (the cards) and sheet **Objects** (the table with its
+  filters), with a header block of source, filters, last sync, user and version.
+- **Veeam**: Size, broken chains and deleted sources are not reported by Veeam. The cards say so
+  instead of showing zeros.
+
 ## 0.5.0 — 2026-11-11
 
 Final release: the tree of 0.5.0-rc4, confirmed by the user on the VM (2026-11-11). Checked on the
