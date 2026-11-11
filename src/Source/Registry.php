@@ -84,6 +84,10 @@ final class Registry
     {
         $type   = (string) ($connectionRow['type'] ?? '');
         $defaults = self::defaults($type);
+        if (self::sourceClass($type) !== null && trim((string) ($connectionRow['host'] ?? '')) === '') {
+            // 0.5.0-rc4: a blank host built "https://:9419/..." and failed deep in the client.
+            throw new \InvalidArgumentException('Host is empty: enter the backup server address in Setup > Backup Info > Connections.');
+        }
 
         return match ($type) {
             'vinchin' => new VinchinSource(

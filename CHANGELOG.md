@@ -1,5 +1,14 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.5.0-rc4 — 2026-11-11 (release candidate)
+
+- **Probe no longer ends on GLPI's error page.** A connection with no Host now says "Host is empty:
+  enter the backup server address in Setup > Backup Info > Connections." on Probe, in the sync log
+  and on the connection's last result, for every type. In rc3 a Veeam connection without a Host
+  built the address `https://:9419/...` and the Probe page failed. Found on the VM.
+- Probe and Sample audit endpoints show any other unexpected error as a "Probe failed: ..." line.
+  Messages carry the method and path only, never credentials.
+
 ## 0.5.0-rc3 — 2026-11-11 (release candidate)
 
 - **The user manual ships with the plugin.** Backup Info › Manual now shows the manual for 0.5.0

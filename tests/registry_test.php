@@ -68,6 +68,20 @@ try {
 }
 check('create() throws InvalidArgumentException when type is missing', $threw);
 
+// 0.5.0-rc4: a blank Host is refused up front with a plain message, for every type (rc3 built
+// "https://:9419/..." and the Probe page died on the Veeam client's POST guard).
+foreach (['vinchin', 'veeam'] as $t) {
+    foreach (['', '   '] as $h) {
+        $msg = '';
+        try {
+            Registry::create(['type' => $t, 'host' => $h, 'username' => 'u', 'password' => 'p', 'api_key' => 'k'], $decrypt);
+        } catch (\InvalidArgumentException $e) {
+            $msg = $e->getMessage();
+        }
+        check("create() refuses blank host for $t ('$h')", $msg === 'Host is empty: enter the backup server address in Setup > Backup Info > Connections.');
+    }
+}
+
 // Vinchin row builds a source (full mapping covered in vinchin_mapper_test.php).
 $vinchinRow = ['type' => 'vinchin', 'host' => 'h', 'auth_mode' => 'api_key', 'api_key' => 'ENC', 'verify_tls' => 1];
 $seen = [];

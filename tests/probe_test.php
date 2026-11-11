@@ -259,6 +259,17 @@ check('manual job: line says manual and global RPO, not "not understood"', count
 check('manual job: object schedule unknown, so the row label is "(global)"', isset($s['objects'][0]) && $s['objects'][0]->scheduleHours === null
     && (new \GlpiPlugin\Backupinfo\Rpo(26, 24))->label(['schedule_hours' => $s['objects'][0]->scheduleHours]) === '26 h (global)');
 
+// 0.5.0-rc4: any error thrown by a source's probe becomes an error line, never a GLPI error page.
+final class ThrowingProbe implements BackupSource, ProbeableSource
+{
+    public function fetch(): array { return []; }
+    public function probe(int $limit, string $search = ''): array { throw new \LogicException('POST /x not allowed'); }
+}
+$p = Probe::fromSource(new ThrowingProbe(), $m);
+check('probe: a thrown error becomes an error line', $p['errors'] === ['Probe failed: POST /x not allowed'] && $p['raw'] === [] && $p['objects'] === []);
+$probeSrc = (string) file_get_contents(BI_ROOT . '/src/Probe.php');
+check('audit probe also catches any error', (bool) preg_match('/function fromAuditSource.*?catch \(\\\\Throwable/s', $probeSrc));
+
 check('probe search is trimmed and capped', Probe::cleanSearch("  VM-A  ") === 'VM-A' && mb_strlen(Probe::cleanSearch(str_repeat('x', 300))) === 100);
 
 done();

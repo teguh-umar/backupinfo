@@ -72,7 +72,11 @@ final class Probe
         if (!$source instanceof AuditProbeableSource) {
             return ['raw' => [], 'errors' => ['This source type has no audit probe yet']];
         }
-        $sample = $source->probeAudit($limit, $search);
+        try {
+            $sample = $source->probeAudit($limit, $search);
+        } catch (\Throwable $e) {
+            return ['raw' => [], 'errors' => ['Probe failed: ' . $e->getMessage()]];
+        }
         $raw    = [];
         foreach ($sample['raw'] as $label => $rows) {
             $raw[$label] = array_map([self::class, 'redact'], $rows);
@@ -98,7 +102,14 @@ final class Probe
             return $out;
         }
 
-        $sample = $source->probe($limit, $search);
+        try {
+            $sample = $source->probe($limit, $search);
+        } catch (\Throwable $e) {
+            // 0.5.0-rc4: any error is a line on the page, never GLPI's error page. Sources put
+            // method and path in messages, never credentials.
+            $out['errors'][] = 'Probe failed: ' . $e->getMessage();
+            return $out;
+        }
         foreach ($sample['raw'] as $endpoint => $rows) {
             $out['raw'][$endpoint] = array_map([self::class, 'redact'], $rows);
         }
