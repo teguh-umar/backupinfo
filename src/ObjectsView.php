@@ -10,15 +10,15 @@ namespace GlpiPlugin\Backupinfo;
  */
 final class ObjectsView
 {
-    public const COLUMNS = ['Name', 'IP', 'Kind', 'Job', 'Last backup', 'Restore points', 'Size', 'Last run', 'Result',
+    public const COLUMNS = ['Name', 'IP', 'Kind', 'Job', 'Last backup', 'Age', 'Restore points', 'Size', 'Last run', 'Result',
         'Restore test', 'Source', 'Match', 'Computer', 'Action'];
 
     /** Column indexes the page shows as HTML. */
     public const COL_NAME     = 0;
-    public const COL_RESULT   = 8;
-    public const COL_RESTORE  = 9;
-    public const COL_COMPUTER = 12;
-    public const COL_ACTION   = 13;
+    public const COL_RESULT   = 9;
+    public const COL_RESTORE  = 10;
+    public const COL_COMPUTER = 13;
+    public const COL_ACTION   = 14;
 
     /** Restore tests search option "Computer" (RestoreTest::rawSearchOptions). */
     private const SO_COMPUTER = 3;
@@ -63,7 +63,7 @@ final class ObjectsView
      * @param array<string, string> $matchLabels match_state => label
      * @return list<list<string>>
      */
-    public static function rows(array $objects, array $last, array $tests, array $types, array $matchLabels): array
+    public static function rows(array $objects, array $last, array $tests, array $types, array $matchLabels, int $nowS): array
     {
         $out = [];
         foreach ($objects as $o) {
@@ -77,6 +77,7 @@ final class ObjectsView
                 (string) ($o['kind'] ?? ''),
                 (string) ($o['job_name'] ?? ''),
                 (string) ($o['last_backup'] ?? ''),
+                Summary::AGE_BUCKETS[Summary::ageBucket(isset($o['last_backup']) ? (string) $o['last_backup'] : null, $nowS)],
                 (string) (int) ($o['restore_points'] ?? 0),
                 (string) ($o['data_size'] ?? ''),
                 $run === null ? '' : (string) ($run['start_time'] ?? ''),
@@ -89,6 +90,29 @@ final class ObjectsView
             ];
         }
         return $out;
+    }
+
+    /**
+     * The table's rows for the state buttons, the age segments and the Needs attention toggle
+     * (backup summary, 2026-11-11). The cards use every row; the table only these.
+     *
+     * @param list<array<string, mixed>> $objects
+     * @param list<string>|null $states match_state values (null = all)
+     * @param list<string> $ages Summary::AGE_BUCKETS keys ([] = all)
+     * @param array<int, true> $attentionIds Summary::build()['attentionIds']
+     * @return list<array<string, mixed>>
+     */
+    public static function select(array $objects, ?array $states, array $ages, bool $attentionOnly, array $attentionIds, int $nowS): array
+    {
+        return array_values(array_filter($objects, static function (array $o) use ($states, $ages, $attentionOnly, $attentionIds, $nowS): bool {
+            if ($states !== null && !in_array((string) ($o['match_state'] ?? ''), $states, true)) {
+                return false;
+            }
+            if ($ages !== [] && !in_array(Summary::ageBucket(isset($o['last_backup']) ? (string) $o['last_backup'] : null, $nowS), $ages, true)) {
+                return false;
+            }
+            return !$attentionOnly || isset($attentionIds[(int) $o['id']]);
+        }));
     }
 
     /** Badge colour of a run or test result: green success/pass, red failed/fail, yellow anything else. */

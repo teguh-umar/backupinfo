@@ -174,7 +174,7 @@ if (!$canPin) {
     $columns[ObjectsView::COL_ACTION] = 'ID';
 }
 $page = Html::getPrefixedUrl('/plugins/backupinfo/front/objects.php');
-$view = AuditTable::view('backupinfo-objects', ['columns' => $columns, 'rows' => ObjectsView::rows($objects, $last, $tests, Registry::types(), $labels)], $_GET,
+$view = AuditTable::view('backupinfo-objects', ['columns' => $columns, 'rows' => ObjectsView::rows($objects, $last, $tests, Registry::types(), $labels, time())], $_GET,
     (int) ($_SESSION['glpilist_limit'] ?? 15), [
         'fixed' => [ObjectsView::COL_ACTION],
         'html'  => static function (array $row) use ($meta, $canPin, $page, $canTest, $canSeeTests): array {
