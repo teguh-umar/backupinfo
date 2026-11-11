@@ -17,9 +17,18 @@ final class SummaryView
      * @param int $activeSource 0 = All
      * @param list<string> $ageOn age bucket keys filtering the table now
      * @param string|null $lastSync oldest last_sync of the chosen connections
+     * @param bool $attentionOn the Needs attention toggle is on (kept by the age segments)
      */
-    public static function render(array $model, array $sources, int $activeSource, string $baseUrl, array $ageOn, ?string $lastSync): string
+    public static function render(array $model, array $sources, int $activeSource, string $baseUrl, array $ageOn, ?string $lastSync, bool $attentionOn = false): string
     {
+        // An age segment toggles itself in the current selection; several can be on at once.
+        $segUrl = static function (string $key) use ($baseUrl, $activeSource, $ageOn, $attentionOn): string {
+            $ages = in_array($key, $ageOn, true) ? array_values(array_diff($ageOn, [$key])) : [...$ageOn, $key];
+            return htmlescape($baseUrl . '?' . http_build_query(array_filter(
+                ['state' => 'all', 'source' => $activeSource, 'age' => $ages ?: null, 'attention' => $attentionOn ? '1' : null],
+                static fn($v): bool => $v !== null
+            )));
+        };
         $e   = static fn(mixed $s): string => htmlescape((string) $s);
         $url = static fn(int $source, string $extra = ''): string => htmlescape($baseUrl . '?state=all&source=' . $source . $extra);
         $pct = static fn(?float $v): string => $v === null ? '—' : sprintf('%.1f%%', $v);
@@ -77,13 +86,13 @@ final class SummaryView
             }
             $dim = $ageOn !== [] && !in_array($key, $ageOn, true) ? ' opacity-50' : '';
             $h  .= '<a class="progress-bar ' . self::AGE_COLORS[$key] . $dim . '" style="width:' . sprintf('%.1f', $count * 100 / $n) . '%"'
-                . ' href="' . $url($activeSource, '&age[]=' . $key) . '" title="' . $e(__($label, 'backupinfo') . ': ' . $count) . '"></a>';
+                . ' href="' . $segUrl($key) . '" title="' . $e(__($label, 'backupinfo') . ': ' . $count) . '"></a>';
         }
         $h .= '</div><div class="d-flex flex-wrap gap-3 small">';
         foreach (Summary::AGE_BUCKETS as $key => $label) {
             $count = (int) $model['age'][$key];
-            $h .= '<span><span class="badge ' . self::AGE_COLORS[$key] . ' me-1">&nbsp;</span>' . $e(__($label, 'backupinfo'))
-                . ' <strong>' . $count . '</strong> · ' . ($n === 0 ? '0%' : sprintf('%d%%', (int) round($count * 100 / $n))) . '</span>';
+            $h .= '<a class="text-reset text-decoration-none" href="' . $segUrl($key) . '"><span class="badge ' . self::AGE_COLORS[$key] . ' me-1">&nbsp;</span>' . $e(__($label, 'backupinfo'))
+                . ' <strong>' . $count . '</strong> · ' . ($n === 0 ? '0%' : sprintf('%d%%', (int) round($count * 100 / $n))) . '</a>';
         }
         $h .= '</div></div></div>';
 

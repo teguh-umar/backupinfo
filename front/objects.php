@@ -305,7 +305,7 @@ $view = AuditTable::view('backupinfo-objects', ['columns' => $columns, 'rows' =>
 Html::header(__('Backup objects', 'backupinfo'), '', \GlpiPlugin\Pgnsuite\Menu::SECTOR, 'backupinfo', 'objects');
 \GlpiPlugin\Pgnsuite\Menu::renderSubNav('backupinfo', 'objects');
 
-echo SummaryView::render($model, $activeSources, $source, $page, $ages, $oldest);
+echo SummaryView::render($model, $activeSources, $source, $page, $ages, $oldest, $attentionOn);
 
 echo '<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">';
 // Bordered button group, not .nav-pills: pills have no borders and their active tint is
