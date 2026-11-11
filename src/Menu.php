@@ -25,6 +25,12 @@ class Menu
             ];
         }
         if (Session::haveRight(RightDefinition::VIEW, READ)) {
+            // Backup summary (2026-11-11): the same page, opened on the cards with every row.
+            $options['summary'] = [
+                'title' => __('Backup summary', 'backupinfo'),
+                'page'  => '/plugins/backupinfo/front/objects.php?state=all#backupinfo-summary',
+                'icon'  => 'ti ti-chart-bar',
+            ];
             $options['objects'] = [
                 'title' => __('Backup objects', 'backupinfo'),
                 'page'  => '/plugins/backupinfo/front/objects.php',

@@ -55,9 +55,22 @@ check('page: GLPI table with the objects rows', str_contains($obj, "render('comp
 check('page: runs read from the stored runs, no source call', str_contains($obj, 'glpi_plugin_backupinfo_runs_items AS i') && !str_contains($obj, 'Registry::create('));
 check('page: action column fixed (no filter, no sort)', str_contains($obj, "'fixed' => [ObjectsView::COL_ACTION]"));
 check('page: failure reason only as escaped hover text', str_contains($obj, "title=\"' . htmlescape(\$m['reason'])"));
-check('page: reloadTab reloads with the state kept', str_contains($obj, 'window.reloadTab = (add) =>') && str_contains($obj, "'?state=' . \$state"));
+check('page: reloadTab reloads with the state kept', str_contains($obj, 'window.reloadTab = (add) =>') && str_contains($obj, '$js($link())') && str_contains($obj, "['state' => \$state]"));
 check('page: VM name and Computer open the GLPI asset', str_contains($obj, '$out[ObjectsView::COL_NAME]     = \'<a href="\' . $asset') && str_contains($obj, 'Computer::getFormURLWithID($m[\'cid\'])'));
 check('page: restore test opens the Computer\'s tests; record one only with CREATE', str_contains($obj, 'ObjectsView::restoreListQuery($m[\'cid\'])') && str_contains($obj, 'RightDefinition::RESTORETEST, CREATE') && str_contains($obj, "'?computers_id=' . \$m['cid']"));
 check('page: Columns menu kept in this browser', str_contains($obj, '"backupinfo.objects.cols"') && str_contains($obj, "TableUi::columnsButton('backupinfo-objects-cols')"));
+
+// Backup summary wiring (2026-11-11).
+check('page: summary model and cards', str_contains($obj, 'Summary::build(') && str_contains($obj, 'SummaryView::render('));
+check('page: table rows filtered in PHP, not in SQL', str_contains($obj, 'ObjectsView::select(') && !str_contains($obj, "\$where[\$table . '.match_state']"));
+check('page: button renamed Not matched, key kept', str_contains($obj, "'attention' => [__('Not matched', 'backupinfo')") && !str_contains($obj, 'Needs review or not found'));
+check('page: active flag of the connection loaded', str_contains($obj, 'connection_active'));
+check('page: Needs attention toggle', str_contains($obj, "__s('Needs attention', 'backupinfo')") && str_contains($obj, "\$link(['attention' => '1'])"));
+check('page: export link', str_contains($obj, "'export' => 'xlsx'"));
+check('page: source only for an active connection', str_contains($obj, 'isset($activeSources[$source])'));
+check('page: reloads keep source, age and attention', str_contains($obj, '$keep') && str_contains($obj, "'source'") && str_contains($obj, "'age'"));
+$menu = $read('src/Menu.php');
+check('menu: Backup summary entry before Backup objects', str_contains($menu, "\$options['summary']") && str_contains($menu, "__('Backup summary', 'backupinfo')")
+    && str_contains($menu, '#backupinfo-summary') && strpos($menu, "\$options['summary']") < strpos($menu, "\$options['objects']"));
 
 done();

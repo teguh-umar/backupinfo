@@ -12,6 +12,9 @@ use GlpiPlugin\Backupinfo\AuditTable;
 use GlpiPlugin\Backupinfo\Cron;
 use GlpiPlugin\Backupinfo\ObjectsView;
 use GlpiPlugin\Backupinfo\RestoreTest;
+use GlpiPlugin\Backupinfo\Rpo;
+use GlpiPlugin\Backupinfo\Summary;
+use GlpiPlugin\Backupinfo\SummaryView;
 use GlpiPlugin\Backupinfo\TableUi;
 use GlpiPlugin\Backupinfo\RightDefinition;
 use GlpiPlugin\Backupinfo\Source\Registry;
@@ -85,16 +88,36 @@ if (isset($_POST['unpin'])) {
     Html::back();
 }
 
+$page      = Html::getPrefixedUrl('/plugins/backupinfo/front/objects.php');
 $canConfig = Session::haveRight(RightDefinition::CONFIG, READ);
 $canPin    = Session::haveRight(RightDefinition::CONFIG, UPDATE);
 
 $states = [
-    'attention' => [__('Needs review or not found', 'backupinfo'), ['review', 'unmatched']],
+    'attention' => [__('Not matched', 'backupinfo'), ['review', 'unmatched']],
     'manual'    => [__('Pinned by hand', 'backupinfo'), ['manual']],
     'matched'   => [__('Matched', 'backupinfo'), ['matched']],
     'all'       => [__('All', 'backupinfo'), null],
 ];
 $state = is_string($_GET['state'] ?? null) && isset($states[$_GET['state']]) ? $_GET['state'] : 'attention';
+
+// Backup summary (2026-11-11): source switch (active connections only), age segments, attention toggle.
+$activeSources = [];
+$lastSyncs     = [];
+$typesById     = [];
+foreach ($DB->request(['FROM' => 'glpi_plugin_backupinfo_connections', 'WHERE' => ['is_active' => 1], 'ORDER' => ['name']]) as $c) {
+    $activeSources[(int) $c['id']] = (string) $c['name'];
+    $lastSyncs[(int) $c['id']]     = (string) ($c['last_sync'] ?? '');
+    $typesById[(int) $c['id']]     = (string) ($c['type'] ?? '');
+}
+$source = is_string($_GET['source'] ?? null) && ctype_digit($_GET['source']) ? (int) $_GET['source'] : 0;
+if (!isset($activeSources[$source])) {
+    $source = 0; // inactive, deleted or not a connection: All
+}
+$ages = array_values(array_intersect(array_keys(Summary::AGE_BUCKETS), is_array($_GET['age'] ?? null) ? array_map('strval', $_GET['age']) : []));
+$attentionOn = ($_GET['attention'] ?? '') === '1';
+// Kept on every link and table reload of this page.
+$keep = array_filter(['source' => $source ?: null, 'age' => $ages ?: null, 'attention' => $attentionOn ? '1' : null], static fn($v): bool => $v !== null);
+$link = static fn(array $over = []): string => $page . '?' . http_build_query(array_filter(array_merge(['state' => $state], $keep, $over), static fn($v): bool => $v !== null));
 
 // Visibility: the Computer's entity, or (no Computer) config READ.
 $entity  = getEntitiesRestrictCriteria('glpi_computers');
@@ -102,12 +125,12 @@ $withPc  = ['glpi_computers.id' => ['>', 0]] + $entity;
 // Config READ also sees rows whose Computer was purged (no join hit), so they can be unpinned.
 $visible = $canConfig ? ['OR' => [[$table . '.items_id' => 0], ['glpi_computers.id' => null], $withPc]] : $withPc;
 $where   = [$visible];
-if ($states[$state][1] !== null) {
-    $where[$table . '.match_state'] = $states[$state][1];
+if ($source > 0) {
+    $where[$table . '.connections_id'] = $source;
 }
 $objects = [];
 foreach ($DB->request([
-    'SELECT'    => [$table . '.*', 'glpi_computers.name AS computer_name', 'glpi_plugin_backupinfo_connections.name AS connection_name', 'glpi_plugin_backupinfo_connections.type AS connection_type'],
+    'SELECT'    => [$table . '.*', 'glpi_computers.name AS computer_name', 'glpi_plugin_backupinfo_connections.name AS connection_name', 'glpi_plugin_backupinfo_connections.type AS connection_type', 'glpi_plugin_backupinfo_connections.is_active AS connection_active'],
     'FROM'      => $table,
     'LEFT JOIN' => [
         'glpi_computers' => ['ON' => [
@@ -154,6 +177,18 @@ foreach (array_chunk(array_keys($lastTimes), 500) as $chunk) {
     }
 }
 $last  = ObjectsView::lastRuns($runRows);
+
+// The cards count every visible row of the source; the table shows the filtered ones.
+$now  = time();
+$gaps = [];
+foreach ($typesById as $id => $type) {
+    $gaps[$id] = Registry::gaps($type);
+}
+$model   = Summary::build($objects, $last, Rpo::fromConfig(), $now, $gaps);
+$chosen  = $source > 0 ? [$source => $lastSyncs[$source]] : $lastSyncs;
+$synced  = array_filter($chosen, static fn(string $d): bool => $d !== '');
+$oldest  = count($synced) === count($chosen) && $synced !== [] ? min($synced) : null;
+$objects = ObjectsView::select($objects, $states[$state][1], $ages, $attentionOn, $model['attentionIds'], $now);
 $tests = RestoreTest::latest(array_map(static fn(array $o): int => (int) $o['items_id'], $objects));
 $canTest = Session::haveRight(RightDefinition::RESTORETEST, CREATE);
 $canSeeTests = Session::haveRight(RightDefinition::RESTORETEST, READ);
@@ -173,8 +208,7 @@ $columns = ObjectsView::COLUMNS;
 if (!$canPin) {
     $columns[ObjectsView::COL_ACTION] = 'ID';
 }
-$page = Html::getPrefixedUrl('/plugins/backupinfo/front/objects.php');
-$view = AuditTable::view('backupinfo-objects', ['columns' => $columns, 'rows' => ObjectsView::rows($objects, $last, $tests, Registry::types(), $labels, time())], $_GET,
+$view = AuditTable::view('backupinfo-objects', ['columns' => $columns, 'rows' => ObjectsView::rows($objects, $last, $tests, Registry::types(), $labels, $now)], $_GET,
     (int) ($_SESSION['glpilist_limit'] ?? 15), [
         'fixed' => [ObjectsView::COL_ACTION],
         'html'  => static function (array $row) use ($meta, $canPin, $page, $canTest, $canSeeTests): array {
@@ -220,6 +254,8 @@ $view = AuditTable::view('backupinfo-objects', ['columns' => $columns, 'rows' =>
 Html::header(__('Backup objects', 'backupinfo'), '', \GlpiPlugin\Pgnsuite\Menu::SECTOR, 'backupinfo', 'objects');
 \GlpiPlugin\Pgnsuite\Menu::renderSubNav('backupinfo', 'objects');
 
+echo SummaryView::render($model, $activeSources, $source, $page, $ages, $oldest);
+
 echo '<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">';
 // Bordered button group, not .nav-pills: pills have no borders and their active tint is
 // unreadable on GLPI's default palette (same finding as the shared ConfigTab sub-nav).
@@ -228,10 +264,19 @@ foreach ($states as $key => [$label]) {
     $active = $key === $state;
     echo '<a class="btn btn-outline-secondary' . ($active ? ' active' : '') . '"'
         . ($active ? ' aria-current="page"' : '')
-        . ' href="' . htmlescape($page . '?state=' . $key) . '">' . htmlescape($label) . '</a>';
+        . ' href="' . htmlescape($link(['state' => $key])) . '">' . htmlescape($label) . '</a>';
 }
 echo '</div>';
+// Needs attention combines with the state buttons.
+echo '<a class="btn btn-outline-danger' . ($attentionOn ? ' active' : '') . '" href="' . htmlescape($attentionOn ? $link(['attention' => null]) : $link(['attention' => '1'])) . '">'
+    . '<i class="ti ti-alert-triangle me-1"></i>' . __s('Needs attention', 'backupinfo') . '</a>';
+if ($ages !== []) {
+    echo '<a class="btn btn-ghost-secondary" href="' . htmlescape($link(['age' => null])) . '">' . __s('Clear age filter', 'backupinfo') . '</a>';
+}
+echo '<div class="ms-auto d-flex gap-2">';
+echo '<a class="btn btn-outline-secondary" href="' . htmlescape($link(['export' => 'xlsx'])) . '"><i class="ti ti-file-spreadsheet me-1"></i>' . __s('Export (Excel)', 'backupinfo') . '</a>';
 echo TableUi::columnsButton('backupinfo-objects-cols');
+echo '</div>';
 echo '</div>';
 if (!$canConfig) {
     echo '<div class="text-muted mb-2">' . __s('Objects without a computer are shown only to Backup Info administrators.', 'backupinfo') . '</div>';
@@ -253,7 +298,7 @@ echo Html::scriptBlock('(() => {
     url.forEach((v, k) => { if (k.startsWith("filters[")) { f.append(k, v); } });
     const st = {filters: f.toString(), sort: url.get("sort") || "", order: url.get("order") || "ASC", start: parseInt(url.get("start") || "0", 10) || 0, limit: url.get("glpilist_limit") || ""};
     window.reloadTab = (add) => {
-        window.location.href = ' . $js($page . '?state=' . $state) . ' + "&" + T.query(T.step(st, add));
+        window.location.href = ' . $js($link()) . ' + "&" + T.query(T.step(st, add));
     };
     T.bindFilters($(root), (add) => window.reloadTab(add));
     if (st.limit) { $(root).find("select[name=list_limit]").val(st.limit); }
