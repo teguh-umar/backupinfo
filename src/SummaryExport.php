@@ -29,7 +29,7 @@ final class SummaryExport
         $out = [
             ['KPI', 'Protected objects', (string) $n, sprintf('%d kinds · %d sources', (int) $model['kinds'], (int) $model['sources'])],
             ['KPI', 'Fresh backups', $pct($model['freshPct']), sprintf('%d objects ≤ 24 hours', (int) $model['fresh'])],
-            ['KPI', 'Total data', Summary::human((int) $model['bytes']), 'protected data size'],
+            ['KPI', 'Total data', ($model['sizeReported'] ?? true) ? Summary::human((int) $model['bytes']) : 'Not reported by this source', 'protected data size'],
             ['KPI', 'Restore points', (string) (int) $model['points'], $model['pointsAvg'] === null ? '—' : sprintf('average %.1f per object', $model['pointsAvg'])],
             ['KPI', 'Needs attention', (string) count($model['attention']), implode(' · ', $reasonLine)],
         ];

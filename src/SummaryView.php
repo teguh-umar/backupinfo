@@ -33,6 +33,8 @@ final class SummaryView
         $url = static fn(int $source, string $extra = ''): string => htmlescape($baseUrl . '?state=all&source=' . $source . $extra);
         $pct = static fn(?float $v): string => $v === null ? '—' : sprintf('%.1f%%', $v);
         $n   = (int) $model['count'];
+        $notReported = __('Not reported by this source', 'backupinfo');
+        $size = static fn(int $b): string => ($model['sizeReported'] ?? true) ? Summary::human($b) : $notReported;
 
         $h = '<div id="backupinfo-summary" class="mb-4">';
 
@@ -61,7 +63,7 @@ final class SummaryView
         $kpis = [
             [__('Protected objects', 'backupinfo'), (string) $n, sprintf(__('%d kinds · %d sources', 'backupinfo'), (int) $model['kinds'], (int) $model['sources']), 'ti-shield-check', 'text-primary'],
             [__('Fresh backups', 'backupinfo'), $pct($model['freshPct']), sprintf(__('%d objects ≤ 24 hours', 'backupinfo'), (int) $model['fresh']), 'ti-bolt', 'text-success'],
-            [__('Total data', 'backupinfo'), Summary::human((int) $model['bytes']), __('protected data size', 'backupinfo'), 'ti-database', 'text-azure'],
+            [__('Total data', 'backupinfo'), $size((int) $model['bytes']), __('protected data size', 'backupinfo'), 'ti-database', 'text-azure'],
             [__('Restore points', 'backupinfo'), (string) (int) $model['points'], $model['pointsAvg'] === null ? '—' : sprintf(__('average %.1f per object', 'backupinfo'), $model['pointsAvg']), 'ti-history', 'text-purple'],
             [__('Needs attention', 'backupinfo'), (string) count($model['attention']), $reasonLine === [] ? __('nothing to check', 'backupinfo') : implode(' · ', $reasonLine), 'ti-alert-triangle', 'text-danger'],
         ];
@@ -101,7 +103,7 @@ final class SummaryView
         $h .= '<div class="col-lg-4"><div class="card h-100"><div class="card-header"><h3 class="card-title">' . __s('By kind', 'backupinfo') . '</h3></div><div class="card-body">';
         foreach ($model['byKind'] as $k) {
             $h .= '<div class="mb-3"><div class="d-flex justify-content-between"><strong>' . $e(__($k['label'], 'backupinfo')) . '</strong>'
-                . '<span class="text-muted">' . (int) $k['count'] . ' · ' . $e(Summary::human((int) $k['bytes'])) . '</span></div>'
+                . '<span class="text-muted">' . (int) $k['count'] . ' · ' . $e($size((int) $k['bytes'])) . '</span></div>'
                 . '<div class="progress progress-sm my-1"><div class="progress-bar bg-success" style="width:' . sprintf('%.1f', $k['freshPct']) . '%"></div></div>'
                 . '<div class="text-muted small">' . $e(sprintf(__('%d%% ≤ 24 hours', 'backupinfo'), (int) round($k['freshPct']))) . '</div></div>';
         }
@@ -122,6 +124,9 @@ final class SummaryView
 
         $h .= '<div class="col-lg-4"><div class="card h-100"><div class="card-header"><h3 class="card-title">' . __s('Largest objects', 'backupinfo') . '</h3></div><div class="card-body">';
         $top = (int) ($model['largest'][0]['bytes'] ?? 0);
+        if ($model['largest'] === [] && !($model['sizeReported'] ?? true)) {
+            $h .= '<div class="text-muted">' . $e($notReported) . '</div>';
+        }
         foreach ($model['largest'] as $l) {
             $h .= '<div class="mb-2"><div class="d-flex justify-content-between"><span>' . $e($l['name']) . '</span><span class="text-muted">' . $e(Summary::human((int) $l['bytes'])) . '</span></div>'
                 . '<div class="progress progress-sm"><div class="progress-bar bg-azure" style="width:' . sprintf('%.1f', $top > 0 ? $l['bytes'] * 100 / $top : 0) . '%"></div></div></div>';

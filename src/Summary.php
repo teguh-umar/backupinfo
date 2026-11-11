@@ -131,7 +131,7 @@ final class Summary
             'bytes' => 0, 'points' => 0, 'pointsAvg' => null, 'matched' => 0,
             'age' => array_fill_keys(array_keys(self::AGE_BUCKETS), 0),
             'byKind' => [], 'attention' => [], 'attentionIds' => [], 'reasonCounts' => [],
-            'largest' => [], 'notes' => [],
+            'largest' => [], 'notes' => [], 'sizeReported' => true,
         ];
         $kinds = [];
         $conns = [];
@@ -216,6 +216,8 @@ final class Summary
                 $noChain[] = $name;
             }
         }
+        // Spec §4.7: no silent zeros when none of the counted sources reports a size.
+        $m['sizeReported'] = $conns === [] || count($noSize) < count($conns);
         if ($noSize !== []) {
             $m['notes'][] = 'Size not reported by: ' . implode(', ', $noSize) . '.';
         }

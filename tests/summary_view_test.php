@@ -70,4 +70,9 @@ check('segment title attribute well formed', !str_contains($h4, 'title=""'));
 check('legend items are links too', substr_count($h4, 'class="text-reset') >= 5);
 check('page passes the attention toggle to the cards', str_contains((string) file_get_contents(BI_ROOT . '/front/objects.php'), '$ages, $oldest, $attentionOn)'));
 
+$veeamOnly = Summary::build([$row(['id' => 7, 'name' => 'vm-v-01', 'connections_id' => 2, 'connection_name' => 'veeam-test', 'data_size' => '', 'last_backup' => $at(60)])],
+    [], new Rpo(26, 24), $now, [2 => ['size' => 'x']]);
+$hv = SummaryView::render($veeamOnly, [2 => 'veeam-test'], 2, '/p', [], null);
+check('veeam only: Total data says not reported, not 0 B', str_contains($hv, 'Not reported by this source') && !str_contains($hv, '>0 B<'));
+
 done();

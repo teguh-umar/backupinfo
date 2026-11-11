@@ -93,6 +93,12 @@ $mv = Summary::build($veeam, [], $rpo, $now, [2 => ['size' => 'x', 'chain' => 'y
 check('build: size note', in_array('Size not reported by: veeam-test.', $mv['notes'], true));
 check('build: chain note', in_array('Broken chain and source deleted not checked for: veeam-test.', $mv['notes'], true));
 
+// Final review fix (spec §4.7): when no counted connection reports a size, say so, not "0 B".
+check('build: size not reported when every source lacks it', $mv['sizeReported'] === false);
+check('build: size reported for a source without the gap', $m['sizeReported'] === true && $empty['sizeReported'] === true);
+$mixed = Summary::build(array_merge($rows, $veeam), [], $rpo, $now, [2 => ['size' => 'x']]);
+check('build: mixed sources still report size', $mixed['sizeReported'] === true);
+
 check('kind label: file', Status::kindLabel('file') === 'File');
 check('kind label: empty is Other', Status::kindLabel('') === 'Other');
 check('kind label: unknown is Other', Status::kindLabel('weird') === 'Other');
