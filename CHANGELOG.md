@@ -1,5 +1,17 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.5.0 — 2026-11-11
+
+Final release: the tree of 0.5.0-rc4, confirmed by the user on the VM (2026-11-11). Checked on the
+VM: connection form per type, Vinchin regression (Probe, sync, Coverage, Backup objects, Audit
+evidence tabs 1–8, Excel export), the Manual page, the ticket dry run, and Veeam Probe with an
+empty Host. The entries 0.5.0-rc1 to rc4 below are its content.
+
+- Veeam B&R 13 stays a **preview**: not verified against a real Veeam server.
+- It also carries the 0.4.0 release candidates (rc1 to rc6; 0.4.0 had no final of its own). Their
+  tickets and Risk Register findings are **off until switched on**. The Problem, the follow-up
+  "Backup succeeded again" and the BCKP-* findings are not yet verified on the VM.
+
 ## 0.5.0-rc4 — 2026-11-11 (release candidate)
 
 - **Probe no longer ends on GLPI's error page.** A connection with no Host now says "Host is empty:
