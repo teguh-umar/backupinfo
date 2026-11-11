@@ -22,6 +22,12 @@ final class Status
         'other' => 'Other',
     ];
 
+    /** Display label of a stored object kind; unknown or empty = Other. */
+    public static function kindLabel(string $kind): string
+    {
+        return self::KIND_LABELS[$kind] ?? 'Other';
+    }
+
     /**
      * Protected when any object's last backup is within that object's own RPO (its job
      * schedule + grace, or the global RPO; see Rpo). An int is the global RPO.

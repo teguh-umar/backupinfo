@@ -39,6 +39,9 @@ final class VeeamSource implements BackupSource, PartialFetch, RunHistorySource,
         'restore' => 'SureBackup verifications are not imported; record restore tests by hand.',
         'activity' => 'Veeam REST has no job operation log, no system alarms (Veeam ONE only) and no login source IP. Four-eyes authorization events need the Security Administrator role and malware events the Incident API Operator role; without them these lists stay empty (see Probe).',
         'targets' => 'tape is not available from Veeam REST.',
+        // Backup summary (spec 2026-11-11 §4.7): facts the object mapper does not fill.
+        'size' => 'Size is not reported by this source.',
+        'chain' => 'Broken backup chains and deleted sources are not reported by this source.',
     ];
 
     /** Probe shape check: endpoint => dot paths the mapper reads on the first data row. */
