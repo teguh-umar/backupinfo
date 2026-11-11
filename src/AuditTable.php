@@ -152,20 +152,43 @@ final class AuditTable
      * @param array{html?: callable, fixed?: list<int>} $options
      * @return array<string, mixed>
      */
-    public static function view(string $id, array $section, array $get, int $defaultLimit, array $options = []): array
+    /**
+     * The rows the table shows before paging: the request's filter row and sort applied. Shared
+     * by view() and by exports that must match the screen (backup summary, final review fix).
+     *
+     * @param array{columns: list<string>, rows: list<list<scalar|null>>} $section
+     * @param array<string, mixed> $get
+     * @param list<int> $fixedCols columns with no filter and no sort
+     * @return array{rows: list<list<scalar|null>>, filters: array<string, string|list<string>>, labels: array<string, string>, choices: array<string, array<string, string>>, sort: ?string, order: string}
+     */
+    public static function filtered(array $section, array $get, array $fixedCols = []): array
     {
-        $fixed = array_flip($options['fixed'] ?? []);
-        $html  = $options['html'] ?? null;
-        $keys    = self::keys($section['columns']);
-        $choices = array_diff_key(self::choices($section['columns'], $section['rows']), array_flip(array_map(static fn(int $i): string => 'c' . $i, array_keys($fixed))));
-        $filters = self::cleanFilters($get['filters'] ?? null, array_diff_key($keys, array_flip(array_map(static fn(int $i): string => 'c' . $i, array_keys($fixed)))), $choices);
-        $rows    = self::apply($section['rows'], $filters);
+        $fixed     = array_flip($fixedCols);
+        $fixedKeys = array_flip(array_map(static fn(int $i): string => 'c' . $i, $fixedCols));
+        $keys      = self::keys($section['columns']);
+        $choices   = array_diff_key(self::choices($section['columns'], $section['rows']), $fixedKeys);
+        $filters   = self::cleanFilters($get['filters'] ?? null, array_diff_key($keys, $fixedKeys), $choices);
+        $rows      = self::apply($section['rows'], $filters);
 
         $sort  = is_string($get['sort'] ?? null) && isset($keys[$get['sort']]) && !isset($fixed[(int) substr($get['sort'], 1)]) ? $get['sort'] : null;
         $order = strtoupper((string) ($get['order'] ?? '')) === 'DESC' ? 'DESC' : 'ASC';
         if ($sort !== null) {
             $rows = self::sort($rows, (int) substr($sort, 1), $order === 'DESC');
         }
+        return ['rows' => $rows, 'filters' => $filters, 'labels' => $keys, 'choices' => $choices, 'sort' => $sort, 'order' => $order];
+    }
+
+    public static function view(string $id, array $section, array $get, int $defaultLimit, array $options = []): array
+    {
+        $fixed = array_flip($options['fixed'] ?? []);
+        $html  = $options['html'] ?? null;
+        $f       = self::filtered($section, $get, $options['fixed'] ?? []);
+        $keys    = $f['labels'];
+        $choices = $f['choices'];
+        $filters = $f['filters'];
+        $rows    = $f['rows'];
+        $sort    = $f['sort'];
+        $order   = $f['order'];
 
         $limit = (int) ($get['glpilist_limit'] ?? 0);
         $limit = $limit > 0 ? min($limit, 9999999) : max(1, $defaultLimit);

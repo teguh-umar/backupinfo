@@ -6,6 +6,7 @@ require BI_ROOT . '/src/Status.php';
 require BI_ROOT . '/src/ObjectsView.php';
 require BI_ROOT . '/src/Summary.php';
 require BI_ROOT . '/src/Xlsx.php';
+require BI_ROOT . '/src/AuditTable.php';
 require BI_ROOT . '/src/SummaryExport.php';
 
 use GlpiPlugin\Backupinfo\ObjectsView;
@@ -52,5 +53,14 @@ check('empty: both sheets with columns and meta', count($empty) === 2 && $empty[
 $obj = (string) file_get_contents(BI_ROOT . '/front/objects.php');
 check('page writes the workbook', str_contains($obj, 'Xlsx::write(') && str_contains($obj, 'SummaryExport::sheets('));
 check('export branch before the HTML', strpos($obj, 'SummaryExport::sheets(') < strpos($obj, 'Html::header('));
+
+// Final review fix: the Objects sheet follows the table's filter row and sort, like the screen.
+$section = ['columns' => ['Name', 'Job', 'Action'], 'rows' => [['vm-b', 'JOB-A', '1'], ['vm-a', 'JOB-A', '2'], ['vm-c', 'JOB-B', '3']]];
+$got = \GlpiPlugin\Backupinfo\AuditTable::filtered($section, ['filters' => ['c1' => ['JOB-A']], 'sort' => 'c0', 'order' => 'ASC'], [2]);
+check('filtered: filter row and sort applied', array_column($got['rows'], 0) === ['vm-a', 'vm-b'], json_encode($got));
+check('filtered: cleaned filters returned with labels', ($got['labels']['c1'] ?? '') === 'Job' && ($got['filters']['c1'] ?? null) === ['JOB-A']);
+check('filtered: no filters keeps rows and order', array_column(\GlpiPlugin\Backupinfo\AuditTable::filtered($section, [], [2])['rows'], 0) === ['vm-b', 'vm-a', 'vm-c']);
+check('view uses filtered()', str_contains((string) file_get_contents(BI_ROOT . '/src/AuditTable.php'), 'self::filtered('));
+check('export applies the table filters and sort', str_contains($obj, 'AuditTable::filtered(') && str_contains($obj, "'filters' => \$_GET['filters'] ?? null"));
 
 done();

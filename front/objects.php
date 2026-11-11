@@ -209,8 +209,15 @@ foreach ($objects as $o) {
 }
 // Excel export of the summary (sheet Summary: cards) and the filtered table (sheet Objects).
 if (($_GET['export'] ?? '') === 'xlsx') {
-    $tableRows = ObjectsView::rows($objects, $last, $tests, Registry::types(), $labels, $now);
+    // The same filter row and sort as the table on screen (the link carries them).
+    $shown     = AuditTable::filtered(['columns' => ObjectsView::COLUMNS, 'rows' => ObjectsView::rows($objects, $last, $tests, Registry::types(), $labels, $now)], $_GET, [ObjectsView::COL_ACTION]);
+    $tableRows = $shown['rows'];
     $filters   = [$states[$state][0]];
+    foreach ($shown['filters'] as $key => $value) {
+        if ($key !== 'active') {
+            $filters[] = $shown['labels'][$key] . ': ' . implode(' | ', (array) $value);
+        }
+    }
     foreach ($ages as $a) {
         $filters[] = Summary::AGE_BUCKETS[$a];
     }
@@ -318,7 +325,7 @@ if ($ages !== []) {
     echo '<a class="btn btn-ghost-secondary" href="' . htmlescape($link(['age' => null])) . '">' . __s('Clear age filter', 'backupinfo') . '</a>';
 }
 echo '<div class="ms-auto d-flex gap-2">';
-echo '<a class="btn btn-outline-secondary" href="' . htmlescape($link(['export' => 'xlsx'])) . '"><i class="ti ti-file-spreadsheet me-1"></i>' . __s('Export (Excel)', 'backupinfo') . '</a>';
+echo '<a class="btn btn-outline-secondary" href="' . htmlescape($link(['export' => 'xlsx', 'filters' => $_GET['filters'] ?? null, 'sort' => $_GET['sort'] ?? null, 'order' => $_GET['order'] ?? null])) . '"><i class="ti ti-file-spreadsheet me-1"></i>' . __s('Export (Excel)', 'backupinfo') . '</a>';
 echo TableUi::columnsButton('backupinfo-objects-cols');
 echo '</div>';
 echo '</div>';
