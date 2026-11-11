@@ -48,9 +48,13 @@ def copy_manual():
             os.remove(dst)  # never ship a stale copy
         return
     os.makedirs(os.path.dirname(dst), exist_ok=True)
-    with open(MANUAL_SRC, 'rb') as src, open(dst, 'wb') as out:
-        out.write(src.read())
-    print('manual: copied to ' + MANUAL)
+    # The suite repo commits the manual with LF; a Windows checkout has CRLF. Ship the committed
+    # (LF) bytes so the copy is byte-equal to the reviewed blob, and print its sha256 to compare.
+    with open(MANUAL_SRC, 'rb') as src:
+        data = src.read().replace(b'\r\n', b'\n')
+    with open(dst, 'wb') as out:
+        out.write(data)
+    print('manual: copied to %s (LF, sha256 %s)' % (MANUAL, hashlib.sha256(data).hexdigest()))
 
 
 def entries():

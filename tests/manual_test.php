@@ -50,6 +50,7 @@ check('Setup links the manual', str_contains($setup, '/plugins/backupinfo/front/
 $build = (string) file_get_contents(BI_ROOT . '/tools/build_zip.py');
 check('build copies the suite manual to docs/manual.md', str_contains($build, "'docs', 'manual', 'backupinfo.md'") && str_contains($build, "MANUAL = 'docs/manual.md'"));
 check('build goes on without the manual', str_contains($build, 'building without it'));
+check('build ships the manual with LF (byte-equal to the committed blob)', str_contains($build, "replace(b'\\r\\n', b'\\n')"));
 check('build copy is not committed', str_contains((string) file_get_contents(BI_ROOT . '/.gitignore'), '/docs/manual.md'));
 
 done();
