@@ -1,5 +1,13 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.5.0-rc3 — 2026-11-11 (release candidate)
+
+- **The user manual ships with the plugin.** Backup Info › Manual now shows the manual for 0.5.0
+  (written for the suite, reviewed by the orchestrator) instead of "no manual yet". It covers
+  Vinchin and Veeam connections, including why Veeam has no API key (username and password only).
+- Build: the manual is copied with LF line ends, byte-equal to the reviewed file.
+- Same code as rc2 otherwise. The rc2 VM checks that passed still count.
+
 ## 0.5.0-rc2 — 2026-11-10 (release candidate)
 
 - **Connection form: Host, API key and the other connection fields are shown again.** In rc1 the
