@@ -1,9 +1,9 @@
 # Changelog — Backup Info (backupinfo)
 
-## Unreleased (feat/backup-summary)
+## 0.5.1-rc1 — 2026-11-11 (release candidate)
 
 Backup summary on the Backup objects page (design 2026-11-11, from the user's "Backup summary"
-reference). Version number not decided yet.
+reference).
 
 - **Summary cards** on top of Backup objects. They read the plugin's stored objects only, with no
   call to the backup system:
