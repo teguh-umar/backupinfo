@@ -1,5 +1,22 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.5.1 — 2026-11-12
+
+Final release: the tree of 0.5.1-rc2, confirmed by the user on the VM (2026-11-12). Checked on the
+VM:
+- sync;
+- the Type and Storage columns;
+- backup and copy as separate rows;
+- Storage matching Vinchin's Storage list;
+- Last run of a stopped copy job no longer borrowed from its source job;
+- the Excel export.
+
+The Backup summary (0.5.1-rc1) was checked on the VM before that. The entries 0.5.1-rc1 and rc2
+below are its content. The user manual (Copilot, reviewed by the orchestrator) covers 0.5.1.
+
+- VM rows still merge every job of a VM name, so a VM's tape copy is not its own row.
+- Veeam rows show no Type or Storage yet.
+
 ## 0.5.1-rc2 — 2026-11-12 (release candidate)
 
 - **Fix: Last run and Result of a row now come from that row's own job.** They were matched by
