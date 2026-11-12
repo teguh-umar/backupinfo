@@ -24,22 +24,53 @@ final class ObjectsView
     private const SO_COMPUTER = 3;
 
     /**
-     * Newest stored run per connection and VM name.
+     * Newest stored run of each object: same connection and name, and a run of one of the object's
+     * own jobs (its job_name list). Several jobs can back up the same name, e.g. a source job and
+     * its WEEKLY COPY to tape (VM 2026-11-12); a row never shows another job's run. An object with
+     * no job listed takes the newest run of its name.
      *
-     * @param iterable<array<string, mixed>> $runRows connections_id, vm_name, start_time, finish_time, status, item_status, reason
-     * @return array<string, array<string, mixed>> "connection|vm (lower case)" => row
+     * @param iterable<array<string, mixed>> $runRows connections_id, vm_name, job_name, start_time, finish_time, status, item_status, reason
+     * @param list<array<string, mixed>> $objects id, connections_id, name, job_name
+     * @return array<int, array<string, mixed>> object id => run row
      */
-    public static function lastRuns(iterable $runRows): array
+    public static function lastRuns(iterable $runRows, array $objects): array
     {
-        $out = [];
+        $newer = static fn(array $r, ?array $than): bool => $than === null || (string) ($r['start_time'] ?? '') > (string) ($than['start_time'] ?? '');
+
+        $byJob = [];
+        $byName = [];
         foreach ($runRows as $r) {
             $vm = mb_strtolower(trim((string) ($r['vm_name'] ?? '')));
             if ($vm === '') {
                 continue;
             }
             $key = (int) ($r['connections_id'] ?? 0) . '|' . $vm;
-            if (!isset($out[$key]) || (string) ($r['start_time'] ?? '') > (string) ($out[$key]['start_time'] ?? '')) {
-                $out[$key] = $r;
+            $job = mb_strtolower(trim((string) ($r['job_name'] ?? '')));
+            if ($newer($r, $byJob[$key][$job] ?? null)) {
+                $byJob[$key][$job] = $r;
+            }
+            if ($newer($r, $byName[$key] ?? null)) {
+                $byName[$key] = $r;
+            }
+        }
+
+        $out = [];
+        foreach ($objects as $o) {
+            $key  = (int) ($o['connections_id'] ?? 0) . '|' . mb_strtolower(trim((string) ($o['name'] ?? '')));
+            $jobs = array_filter(array_map(static fn(string $j): string => mb_strtolower(trim($j)), explode(',', (string) ($o['job_name'] ?? ''))));
+            $run  = null;
+            if ($jobs === []) {
+                $run = $byName[$key] ?? null;
+            } else {
+                foreach ($jobs as $job) {
+                    $r = $byJob[$key][$job] ?? null;
+                    if ($r !== null && $newer($r, $run)) {
+                        $run = $r;
+                    }
+                }
+            }
+            if ($run !== null) {
+                $out[(int) $o['id']] = $run;
             }
         }
         return $out;
@@ -57,7 +88,7 @@ final class ObjectsView
      * page turns it into the pin/unpin form.
      *
      * @param list<array<string, mixed>> $objects joined rows (computer_name, connection_name, connection_type)
-     * @param array<string, array<string, mixed>> $last lastRuns()
+     * @param array<int, array<string, mixed>> $last lastRuns(), by object id
      * @param array<int, array{date: string, result: string}> $tests newest restore test per Computer
      * @param array<string, string> $types source type => label
      * @param array<string, string> $matchLabels match_state => label
@@ -67,7 +98,7 @@ final class ObjectsView
     {
         $out = [];
         foreach ($objects as $o) {
-            $run   = $last[(int) $o['connections_id'] . '|' . mb_strtolower(trim((string) $o['name']))] ?? null;
+            $run   = $last[(int) $o['id']] ?? null;
             $match = (string) ($o['match_state'] ?? '');
             $cid   = (int) $o['items_id'];
             $test  = $cid > 0 ? ($tests[$cid] ?? null) : null;

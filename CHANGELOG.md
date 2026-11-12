@@ -1,5 +1,15 @@
 # Changelog — Backup Info (backupinfo)
 
+## Unreleased
+
+- **Fix: Last run and Result of a row now come from that row's own job.** They were matched by
+  connection and name only. When two jobs back up the same name, for example a source job and its
+  WEEKLY COPY to tape, the copy row showed the source job's newer run. A stopped copy job showed a
+  November "success" while Vinchin's own history ended in January (VM check 2026-11-12). The
+  "Last run failed" reason in Needs attention uses the same match. A row whose own job has no
+  stored run now shows no Last run. A row with no job listed still takes the newest run of its
+  name.
+
 ## 0.5.1-rc1 — 2026-11-11 (release candidate)
 
 Backup summary on the Backup objects page (design 2026-11-11, from the user's "Backup summary"

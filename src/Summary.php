@@ -120,7 +120,7 @@ final class Summary
      * as backups); every other row is one the user can see.
      *
      * @param list<array<string, mixed>> $objects page rows (with connection_name, connection_active)
-     * @param array<string, array<string, mixed>> $last ObjectsView::lastRuns()
+     * @param array<int, array<string, mixed>> $last ObjectsView::lastRuns(), by object id
      * @param array<int, array<string, string>> $gapsByConnection connection id => Registry::gaps(type)
      * @return array<string, mixed>
      */
@@ -146,7 +146,7 @@ final class Summary
             $kind   = trim((string) ($o['kind'] ?? '')) ?: 'other';
             $bytes  = self::bytes((string) ($o['data_size'] ?? ''));
             $bucket = self::ageBucket(isset($o['last_backup']) ? (string) $o['last_backup'] : null, $nowS);
-            $run    = $last[$cid . '|' . mb_strtolower(trim((string) ($o['name'] ?? '')))] ?? null;
+            $run    = $last[$id] ?? null;
 
             $m['count']++;
             $m['bytes']  += $bytes;

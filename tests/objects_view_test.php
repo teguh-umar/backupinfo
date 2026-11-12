@@ -10,14 +10,13 @@ use GlpiPlugin\Backupinfo\ObjectsView;
 $read = static fn (string $rel): string => (string) @file_get_contents(BI_ROOT . '/' . $rel);
 
 $runs = [
-    ['connections_id' => 1, 'vm_name' => 'VM-A', 'start_time' => '2026-10-30 01:00:00', 'status' => 'success', 'item_status' => 'success', 'reason' => ''],
-    ['connections_id' => 1, 'vm_name' => 'vm-a', 'start_time' => '2026-10-31 01:00:00', 'status' => 'failed', 'item_status' => 'failed', 'reason' => 'Disk full'],
-    ['connections_id' => 2, 'vm_name' => 'VM-A', 'start_time' => '2026-10-31 05:00:00', 'status' => 'success', 'item_status' => '', 'reason' => ''],
-    ['connections_id' => 1, 'vm_name' => '', 'start_time' => '2026-11-01 01:00:00', 'status' => 'failed', 'item_status' => 'failed', 'reason' => ''],
+    ['connections_id' => 1, 'vm_name' => 'VM-A', 'job_name' => 'JOB-1', 'start_time' => '2026-10-30 01:00:00', 'status' => 'success', 'item_status' => 'success', 'reason' => ''],
+    ['connections_id' => 1, 'vm_name' => 'vm-a', 'job_name' => 'job-1', 'start_time' => '2026-10-31 01:00:00', 'status' => 'failed', 'item_status' => 'failed', 'reason' => 'Disk full'],
+    ['connections_id' => 2, 'vm_name' => 'VM-A', 'job_name' => 'JOB-1', 'start_time' => '2026-10-31 05:00:00', 'status' => 'success', 'item_status' => '', 'reason' => ''],
+    ['connections_id' => 1, 'vm_name' => '', 'job_name' => 'JOB-1', 'start_time' => '2026-11-01 01:00:00', 'status' => 'failed', 'item_status' => 'failed', 'reason' => ''],
+    // Another job that backs up the same name (a tape copy of the source job): never VM-A's JOB-1 run.
+    ['connections_id' => 1, 'vm_name' => 'VM-A', 'job_name' => 'COPY JOB-1', 'start_time' => '2026-11-02 01:00:00', 'status' => 'success', 'item_status' => 'success', 'reason' => ''],
 ];
-$last = ObjectsView::lastRuns($runs);
-check('last run: newest per connection and VM, any case', $last['1|vm-a']['start_time'] === '2026-10-31 01:00:00' && $last['2|vm-a']['start_time'] === '2026-10-31 05:00:00' && count($last) === 2);
-check('result: the VM\'s own status, else the run\'s', ObjectsView::result($last['1|vm-a']) === 'failed' && ObjectsView::result($last['2|vm-a']) === 'success');
 
 $objects = [
     ['id' => 5, 'connections_id' => 1, 'name' => 'VM-A', 'ip' => '', 'kind' => 'vm', 'job_name' => 'JOB-1', 'last_backup' => '2026-10-30 01:10:00', 'restore_points' => 7, 'data_size' => '12 GB',
@@ -25,6 +24,25 @@ $objects = [
     ['id' => 6, 'connections_id' => 1, 'name' => 'VM-NEW', 'ip' => '', 'kind' => 'vm', 'job_name' => '', 'last_backup' => null, 'restore_points' => 0, 'data_size' => '',
         'match_state' => 'unmatched', 'items_id' => 0, 'computer_name' => null, 'connection_name' => 'Main', 'connection_type' => 'vinchin'],
 ];
+$last = ObjectsView::lastRuns($runs, $objects);
+check('last run: per object, newest run of its own job, any case', ($last[5]['start_time'] ?? '') === '2026-10-31 01:00:00' && !isset($last[6]));
+check('result: the VM own status, else the run status', ObjectsView::result($last[5]) === 'failed' && ObjectsView::result($runs[2]) === 'success');
+
+// 2026-11-12 VM: two rows share a name (source job and its WEEKLY COPY to tape); each shows its own job's run.
+$shared = [
+    ['id' => 21, 'connections_id' => 1, 'name' => 'VM-A', 'job_name' => 'COPY JOB-1'],
+    ['id' => 22, 'connections_id' => 1, 'name' => 'VM-A', 'job_name' => 'OTHER, JOB-1'],
+    ['id' => 23, 'connections_id' => 1, 'name' => 'VM-A', 'job_name' => 'STOPPED-COPY'],
+    ['id' => 24, 'connections_id' => 1, 'name' => 'VM-A', 'job_name' => ''],
+    ['id' => 25, 'connections_id' => 2, 'name' => 'vm-a', 'job_name' => 'JOB-1'],
+];
+$ls = ObjectsView::lastRuns($runs, $shared);
+check('last run: copy row gets the copy run', ($ls[21]['start_time'] ?? '') === '2026-11-02 01:00:00');
+check('last run: several jobs -> newest of those jobs only', ($ls[22]['start_time'] ?? '') === '2026-10-31 01:00:00');
+check('last run: no run of its own job -> none, never a run of another job', !isset($ls[23]));
+check('last run: no job listed -> newest run of that name', ($ls[24]['start_time'] ?? '') === '2026-11-02 01:00:00');
+check('last run: per connection', ($ls[25]['start_time'] ?? '') === '2026-10-31 05:00:00');
+
 $rows = ObjectsView::rows($objects, $last, [11 => ['date' => '2026-10-20', 'result' => 'pass']], ['vinchin' => 'Vinchin'], ['matched' => 'Matched', 'unmatched' => 'Not found'], strtotime('2026-11-11 00:00:00'));
 check('rows: one per object, in the page columns', count($rows) === 2 && count($rows[0]) === count(ObjectsView::COLUMNS));
 check('rows: matched object shows its stored facts and newest run', $rows[0] === ['VM-A', '', 'vm', 'JOB-1', '2026-10-30 01:10:00', '> 7 days', '7', '12 GB', '2026-10-31 01:00:00', 'failed', '2026-10-20 pass', 'Vinchin · Main', 'Matched', 'SRV-A', '5'], json_encode($rows[0]));

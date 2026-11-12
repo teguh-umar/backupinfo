@@ -80,7 +80,7 @@ check('build: by kind, count desc', array_column($m['byKind'], 'kind') === ['vm'
     && $m['byKind'][0]['count'] === 2 && $m['byKind'][0]['bytes'] === 3 * 1024 ** 3 && abs($m['byKind'][0]['freshPct'] - 50.0) < 0.01);
 check('build: no notes without gaps', $m['notes'] === []);
 
-$last = ['1|vm-app-01' => ['status' => 'failed', 'start_time' => $at(3000)]];
+$last = [1 => ['status' => 'failed', 'start_time' => $at(3000)]];
 $mf = Summary::build($rows, $last, $rpo, $now, []);
 check('build: failed newest run needs attention', isset($mf['attentionIds'][1]) && $mf['reasonCounts']['failed'] === 1);
 

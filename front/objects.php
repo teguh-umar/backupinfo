@@ -152,16 +152,17 @@ foreach ($DB->request([
     $objects[] = $row;
 }
 
-// Newest stored run per connection and VM name: the newest start first, then its rows.
+// Newest stored run per connection, VM name and job: the newest starts first, then their rows.
+// Per job, because a source job and its tape copy back up the same name (VM 2026-11-12).
 $lastTimes = [];
 $connIds   = array_values(array_unique(array_map(static fn(array $o): int => (int) $o['connections_id'], $objects)));
 if ($connIds !== []) {
     foreach ($DB->request([
-        'SELECT'     => ['r.connections_id', 'i.vm_name', QueryFunction::max('r.start_time', 'last')],
+        'SELECT'     => ['r.connections_id', 'i.vm_name', 'r.job_name', QueryFunction::max('r.start_time', 'last')],
         'FROM'       => 'glpi_plugin_backupinfo_runs_items AS i',
         'INNER JOIN' => ['glpi_plugin_backupinfo_runs AS r' => ['ON' => ['i' => 'runs_id', 'r' => 'id']]],
         'WHERE'      => ['r.connections_id' => $connIds],
-        'GROUPBY'    => ['r.connections_id', 'i.vm_name'],
+        'GROUPBY'    => ['r.connections_id', 'i.vm_name', 'r.job_name'],
     ]) as $row) {
         if (!empty($row['last'])) {
             $lastTimes[(string) $row['last']] = true;
@@ -171,7 +172,7 @@ if ($connIds !== []) {
 $runRows = [];
 foreach (array_chunk(array_keys($lastTimes), 500) as $chunk) {
     foreach ($DB->request([
-        'SELECT'     => ['r.connections_id', 'i.vm_name', 'r.start_time', 'r.finish_time', 'r.status', 'i.item_status', 'r.reason'],
+        'SELECT'     => ['r.connections_id', 'i.vm_name', 'r.job_name', 'r.start_time', 'r.finish_time', 'r.status', 'i.item_status', 'r.reason'],
         'FROM'       => 'glpi_plugin_backupinfo_runs_items AS i',
         'INNER JOIN' => ['glpi_plugin_backupinfo_runs AS r' => ['ON' => ['i' => 'runs_id', 'r' => 'id']]],
         'WHERE'      => ['r.connections_id' => $connIds, 'r.start_time' => $chunk],
@@ -179,7 +180,7 @@ foreach (array_chunk(array_keys($lastTimes), 500) as $chunk) {
         $runRows[] = $row;
     }
 }
-$last  = ObjectsView::lastRuns($runRows);
+$last  = ObjectsView::lastRuns($runRows, $objects);
 
 // The cards count every visible row of the source; the table shows the filtered ones.
 $now  = time();
