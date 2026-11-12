@@ -1,6 +1,6 @@
 # Changelog — Backup Info (backupinfo)
 
-## Unreleased
+## 0.5.1-rc2 — 2026-11-12 (release candidate)
 
 - **Fix: Last run and Result of a row now come from that row's own job.** They were matched by
   connection and name only. When two jobs back up the same name, for example a source job and its
