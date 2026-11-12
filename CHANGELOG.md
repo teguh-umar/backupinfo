@@ -9,6 +9,23 @@
   "Last run failed" reason in Needs attention uses the same match. A row whose own job has no
   stored run now shows no Last run. A row with no job listed still takes the newest run of its
   name.
+- **Fix: a database or file backup and its copy no longer overwrite each other.** Vinchin gives
+  an item's backup and its WEEKLY COPY to tape the same item_uuid, and both were saved under that
+  one key. The table kept whichever came last, so job, size and restore points could flip between
+  syncs (VM check 2026-11-12). The backup keeps its key, so existing rows and manual pins stay.
+  A copy is now its own row, keyed by item and job. VM rows are still merged by name.
+- **New columns Type and Storage** on Backup objects and in the Excel export, after Job:
+  - **Type**: Backup or Copy, from Vinchin's task type. A VM row lists every type it merges.
+  - **Storage**: where the backup is written, as "name (type)", e.g. "Tape_Group_3 (Tape)".
+    The API gives no storage on an item or a job. So the sync reads the storage list
+    (`GET /storages`) and asks the backup-object list once per storage (`storage_uuid` filter),
+    with type names from the API documentation (6 NFS, 7 CIFS, 10 Tape, ...). A copy job still
+    without a storage takes its tape group from `/tapes/job`. A refused read leaves the cell
+    empty and is noted in the sync log; it never fails the sync. Veeam rows show neither yet.
+  - Upgrade: two new columns in `glpi_plugin_backupinfo_objects` (`job_type`, `storage`). They
+    fill on the next sync.
+  - Bookmarked table links with filters or sort on Last backup or later columns now point two
+    columns to the left (Type and Storage were inserted).
 
 ## 0.5.1-rc1 — 2026-11-11 (release candidate)
 

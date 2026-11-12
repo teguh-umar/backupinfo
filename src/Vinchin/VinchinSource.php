@@ -24,6 +24,7 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
 
     /** @var list<string> */
     private array $scheduleErrors = [];
+    private array $storageErrors = [];
 
     /** login mode: true once this instance holds a token */
     private bool $loggedIn = false;
@@ -40,6 +41,15 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
     private const ITEMS_PATH   = '/backup_data/items/list';
     private const HISTORY_PATH = '/jobs/history';
     private const JOBS_PATH    = '/jobs';
+    private const STORAGES_PATH  = '/storages';
+    private const TAPE_JOBS_PATH = '/tapes/job';
+
+    /** storage_type codes (v9 RESTful API doc, "Storage Device Category"). */
+    private const STORAGE_TYPES = [
+        1 => 'Local disk', 2 => 'LVM', 3 => 'Local partition', 4 => 'Fibre Channel', 5 => 'iSCSI', 6 => 'NFS',
+        7 => 'CIFS', 8 => 'Off-site', 9 => 'Cloud', 10 => 'Tape', 11 => 'Local directory', 12 => 'Huawei CBR',
+        13 => 'Parallel file system',
+    ];
 
     /** Body of the console's Backup Object menu with no filter (vinchin-openapi.yaml). */
     private const ITEMS_FILTER = [
@@ -81,9 +91,12 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
 
         try {
             $rows = $this->client->postPaged(self::ITEMS_PATH, self::ITEMS_FILTER);
-            return $this->withSchedules(ItemMapper::map($rows));
+            $objects = $this->withSchedules(ItemMapper::map($rows));
         } catch (\RuntimeException $itemsError) {
             // Backup Object refused: fall back to the job history below.
+        }
+        if (isset($objects)) {
+            return $this->withStorages($objects);
         }
 
         $names = array_values(($this->vmNames)());
@@ -105,6 +118,83 @@ final class VinchinSource implements BackupSource, ProbeableSource, AuditProbeab
 
         $this->partial = true;
         return $this->withSchedules(JobHistoryMapper::map($rows, $names, time()));
+    }
+
+    /** Errors of the last fetch()'s storage lookup (those rows show no storage). */
+    public function storageErrors(): array
+    {
+        return $this->storageErrors;
+    }
+
+    /**
+     * Sets each object's storage: the item list asked once per storage (storage_uuid filter, the
+     * API gives no storage on an item or a job), then the tape group of copy jobs still without
+     * one (/tapes/job). Never throws: a refused read leaves those rows without a storage.
+     *
+     * @param list<BackupObject> $objects
+     * @return list<BackupObject>
+     */
+    private function withStorages(array $objects): array
+    {
+        $this->storageErrors = [];
+        try {
+            $storages = $this->client->getPaged(self::STORAGES_PATH, [], 100, 1000);
+        } catch (\RuntimeException $e) {
+            $this->storageErrors[] = 'storage list: ' . $e->getMessage();
+            $storages = [];
+        }
+
+        /** @var array<string, array<string, true>> $labels lower source key => labels */
+        $labels = [];
+        foreach ($storages as $st) {
+            $uuid = is_array($st) ? trim((string) ($st['storage_uuid'] ?? '')) : '';
+            if ($uuid === '') {
+                continue;
+            }
+            $name  = trim((string) ($st['storage_nickname'] ?? '')) ?: trim((string) ($st['storage_name'] ?? '')) ?: $uuid;
+            $code  = (int) ($st['storage_type'] ?? 0);
+            $label = $name . ' (' . (self::STORAGE_TYPES[$code] ?? ('Storage type ' . $code)) . ')';
+            try {
+                $rows = $this->client->postPaged(self::ITEMS_PATH, ['storage_uuid' => [$uuid]] + self::ITEMS_FILTER);
+            } catch (\RuntimeException $e) {
+                $this->storageErrors[] = sprintf('items on storage %s: %s', $name, $e->getMessage());
+                continue;
+            }
+            foreach ($rows as $row) {
+                if (is_array($row)) {
+                    $labels[mb_strtolower(ItemMapper::sourceKey($row))][$label] = true;
+                }
+            }
+        }
+
+        // Tape groups of copy jobs: optional (no tape module = refused), used only where no
+        // storage answered for the row.
+        $tapeGroup = [];
+        try {
+            foreach ($this->client->getPaged(self::TAPE_JOBS_PATH, [], 100, 1000) as $job) {
+                $group = is_array($job) ? trim((string) ($job['group_name'] ?? '')) : '';
+                if ($group !== '' && trim((string) ($job['job_name'] ?? '')) !== '') {
+                    $tapeGroup[mb_strtolower(trim((string) $job['job_name']))] = $group . ' (Tape)';
+                }
+            }
+        } catch (\RuntimeException) {
+            // no tape detail
+        }
+
+        return array_map(static function (BackupObject $o) use ($labels, $tapeGroup): BackupObject {
+            $set = $labels[mb_strtolower($o->sourceKey)] ?? [];
+            if ($set === []) {
+                foreach (explode(',', $o->jobName) as $job) {
+                    $g = $tapeGroup[mb_strtolower(trim($job))] ?? null;
+                    if ($g !== null) {
+                        $set[$g] = true;
+                    }
+                }
+            }
+            $names = array_keys($set);
+            sort($names, SORT_STRING);
+            return $o->withStorage(implode(', ', $names));
+        }, $objects);
     }
 
     /** Errors of the last fetch()'s schedule lookup (objects then use the global RPO). */

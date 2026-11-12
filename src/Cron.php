@@ -120,6 +120,12 @@ final class Cron extends \CommonGLPI
                     Toolbox::logInFile('backupinfo', sprintf("Sync %s: %d job schedule(s) not read, global RPO used: %s\n", $r['name'], count($scheduleErrors), $scheduleErrors[0]));
                     $log(sprintf('%s: %d job schedule(s) not read (global RPO used)', $r['name'], count($scheduleErrors)));
                 }
+                // Unread storages do not fail the sync either: those rows show no storage.
+                $storageErrors = is_object($source) && method_exists($source, 'storageErrors') ? $source->storageErrors() : [];
+                if ($storageErrors !== []) {
+                    Toolbox::logInFile('backupinfo', sprintf("Sync %s: %d storage read(s) failed, storage left empty: %s\n", $r['name'], count($storageErrors), $storageErrors[0]));
+                    $log(sprintf('%s: %d storage read(s) failed (storage left empty)', $r['name'], count($storageErrors)));
+                }
                 $fetched += $r['stats']['fetched'];
                 $log(sprintf(
                     '%s: fetched %d, matched %d, needs review %d, not found %d',

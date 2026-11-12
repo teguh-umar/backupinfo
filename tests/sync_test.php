@@ -143,6 +143,13 @@ check('schedule unknown stored as null', array_key_exists('schedule_hours', $sto
 $store2 = new MemStore();
 $svc->run($conn, new FakeSource([obj('a', 'web1')->withSchedule(336)]), $store2, $m, 5000);
 check('schedule interval stored', ($store2->rows['1|a']['schedule_hours'] ?? null) === 336);
+$store3 = new MemStore();
+$typed = new BackupObject('t', 'web1', '', 'database', 'JOB', 1, 1, '', false, false, null, null, 'Copy', 'TAPE-ONE (Tape)');
+$svc->run($conn, new FakeSource([$typed]), $store3, $m, 5000);
+check('job type and storage stored (0.5.1-rc2)', ($store3->rows['1|t']['job_type'] ?? null) === 'Copy' && ($store3->rows['1|t']['storage'] ?? null) === 'TAPE-ONE (Tape)');
+$store4 = new MemStore();
+$svc->run($conn, new FakeSource([new BackupObject('w', 'web1', '', 'vm', 'JOB', 1, 1, '', false, false, null, null, str_repeat('t', 80), str_repeat('s', 300))]), $store4, $m, 5000);
+check('job type capped at 50, storage at 255', mb_strlen($store4->rows['1|w']['job_type']) === 50 && mb_strlen($store4->rows['1|w']['storage']) === 255);
 check('non-vm never matched',$store->rows['1|d']['items_id'] === 0 && $store->rows['1|d']['itemtype'] === '');
 check('first run affected lists newly matched', in_array(7, $r['affected'], true) && in_array(11, $r['affected'], true));
 

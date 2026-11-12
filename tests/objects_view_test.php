@@ -19,7 +19,7 @@ $runs = [
 ];
 
 $objects = [
-    ['id' => 5, 'connections_id' => 1, 'name' => 'VM-A', 'ip' => '', 'kind' => 'vm', 'job_name' => 'JOB-1', 'last_backup' => '2026-10-30 01:10:00', 'restore_points' => 7, 'data_size' => '12 GB',
+    ['id' => 5, 'connections_id' => 1, 'name' => 'VM-A', 'ip' => '', 'kind' => 'vm', 'job_name' => 'JOB-1', 'job_type' => 'Backup', 'storage' => 'NFS-ONE (NFS)', 'last_backup' => '2026-10-30 01:10:00', 'restore_points' => 7, 'data_size' => '12 GB',
         'match_state' => 'matched', 'items_id' => 11, 'computer_name' => 'SRV-A', 'connection_name' => 'Main', 'connection_type' => 'vinchin'],
     ['id' => 6, 'connections_id' => 1, 'name' => 'VM-NEW', 'ip' => '', 'kind' => 'vm', 'job_name' => '', 'last_backup' => null, 'restore_points' => 0, 'data_size' => '',
         'match_state' => 'unmatched', 'items_id' => 0, 'computer_name' => null, 'connection_name' => 'Main', 'connection_type' => 'vinchin'],
@@ -45,8 +45,8 @@ check('last run: per connection', ($ls[25]['start_time'] ?? '') === '2026-10-31 
 
 $rows = ObjectsView::rows($objects, $last, [11 => ['date' => '2026-10-20', 'result' => 'pass']], ['vinchin' => 'Vinchin'], ['matched' => 'Matched', 'unmatched' => 'Not found'], strtotime('2026-11-11 00:00:00'));
 check('rows: one per object, in the page columns', count($rows) === 2 && count($rows[0]) === count(ObjectsView::COLUMNS));
-check('rows: matched object shows its stored facts and newest run', $rows[0] === ['VM-A', '', 'vm', 'JOB-1', '2026-10-30 01:10:00', '> 7 days', '7', '12 GB', '2026-10-31 01:00:00', 'failed', '2026-10-20 pass', 'Vinchin · Main', 'Matched', 'SRV-A', '5'], json_encode($rows[0]));
-check('rows: no stored run, no Computer -> empty last run, result, restore test and Computer', $rows[1][5] === 'No timestamp' && $rows[1][8] === '' && $rows[1][9] === '' && $rows[1][10] === '' && $rows[1][13] === '' && $rows[1][14] === '6');
+check('rows: matched object shows its stored facts and newest run', $rows[0] === ['VM-A', '', 'vm', 'JOB-1', 'Backup', 'NFS-ONE (NFS)', '2026-10-30 01:10:00', '> 7 days', '7', '12 GB', '2026-10-31 01:00:00', 'failed', '2026-10-20 pass', 'Vinchin · Main', 'Matched', 'SRV-A', '5'], json_encode($rows[0]));
+check('rows: no stored run, no Computer -> empty last run, result, restore test and Computer', $rows[1][4] === '' && $rows[1][5] === '' && $rows[1][7] === 'No timestamp' && $rows[1][10] === '' && $rows[1][11] === '' && $rows[1][12] === '' && $rows[1][15] === '' && $rows[1][16] === '6');
 check('columns: name, result, restore test, computer and action indexes', ObjectsView::COLUMNS[ObjectsView::COL_NAME] === 'Name' && ObjectsView::COLUMNS[ObjectsView::COL_RESTORE] === 'Restore test' && ObjectsView::COLUMNS[ObjectsView::COL_RESULT] === 'Result' && ObjectsView::COLUMNS[ObjectsView::COL_COMPUTER] === 'Computer' && ObjectsView::COLUMNS[ObjectsView::COL_ACTION] === 'Action');
 check('badge: green, red, yellow', ObjectsView::badge('success') === 'bg-success-lt' && ObjectsView::badge('failed') === 'bg-danger-lt' && ObjectsView::badge('abnormal') === 'bg-warning-lt' && ObjectsView::badge('pass') === 'bg-success-lt' && ObjectsView::badge('partial') === 'bg-warning-lt');
 parse_str(ObjectsView::restoreListQuery(11), $q);
@@ -55,7 +55,8 @@ $so = $read('src/RestoreTest.php');
 check('restore tests: search option 3 is the Computer', str_contains($so, "['id' => 3, 'table' => 'glpi_computers', 'field' => 'name', 'linkfield' => 'computers_id'"));
 
 // Backup summary (2026-11-11): Age column and the table filters run in PHP.
-check('columns: Age after Last backup', ObjectsView::COLUMNS[4] === 'Last backup' && ObjectsView::COLUMNS[5] === 'Age');
+check('columns: Age after Last backup', ObjectsView::COLUMNS[6] === 'Last backup' && ObjectsView::COLUMNS[7] === 'Age');
+check('columns: Type and Storage after Job (0.5.1-rc2)', ObjectsView::COLUMNS[3] === 'Job' && ObjectsView::COLUMNS[4] === 'Type' && ObjectsView::COLUMNS[5] === 'Storage');
 $all = [
     ['id' => 1, 'match_state' => 'review', 'last_backup' => '2026-11-10 23:00:00'],
     ['id' => 2, 'match_state' => 'unmatched', 'last_backup' => null],

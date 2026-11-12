@@ -246,8 +246,8 @@ foreach ($r as $o) {
 check('schedules: two-week job gives 336 h', ($byName['VM-A']->scheduleHours ?? null) === 336);
 check('schedules: unreadable strategy stays unknown', array_key_exists('VM-B', $byName) && $byName['VM-B']->scheduleHours === null);
 check('schedules: job list is GET /jobs', $t->calls[1]['method'] === 'GET' && str_contains($t->calls[1]['url'], '/api/v1/jobs?'));
-check('schedules: details only for jobs the objects name', count($t->calls) === 4
-    && str_contains($t->calls[2]['url'], '/jobs/ua?') && str_contains($t->calls[3]['url'], '/jobs/ub?'));
+check('schedules: details only for jobs the objects name', count(array_filter($t->calls, static fn(array $c): bool => str_contains($c['url'], '/api/v1/jobs/'))) === 2
+    &&str_contains($t->calls[2]['url'], '/jobs/ua?') && str_contains($t->calls[3]['url'], '/jobs/ub?'));
 check('schedules: the unreadable one is reported, naming the job', count($src->scheduleErrors()) === 1 && str_contains($src->scheduleErrors()[0], 'JOB-B'));
 
 $t = new FakeT();
@@ -256,5 +256,71 @@ $src = new VinchinSource(new Client('h', $t, 'K'), false, fn() => []);
 $r = $src->fetch();
 check('schedules: refused job list keeps the objects, schedule unknown', count($r) === 1 && $r[0]->scheduleHours === null);
 check('schedules: refused job list is one error line, no key', count($src->scheduleErrors()) === 1 && !str_contains($src->scheduleErrors()[0], 'K'));
+
+// 0.5.1-rc2 (VM 2026-11-12): a database/file item and its tape copy share item_uuid; each is its own row.
+$pair = ItemMapper::map([
+    ['item_name' => 'DB-X(192.0.2.10)', 'item_uuid' => 'u1', 'module_type_des' => 'File', 'task_type' => 17, 'task_type_des' => 'Copy',
+        'task_name' => 'WEEKLY COPY X', 'last_time' => '2026-05-22 01:00:15', 'point_num' => 249, 'data_size' => '688.52GB'],
+    ['item_name' => 'DB-X(192.0.2.10)', 'item_uuid' => 'u1', 'module_type_des' => 'File', 'task_type' => 1, 'task_type_des' => ' Backup',
+        'task_name' => 'FILE BACKUP X', 'last_time' => '2026-05-22 01:00:15', 'point_num' => 168, 'data_size' => '295.2GB'],
+    ['item_name' => 'DB-Y', 'item_uuid' => 'u2', 'module_type_des' => 'Database', 'task_type' => 1, 'task_type_des' => 'Backup', 'task_name' => 'JOB-1'],
+    ['item_name' => 'DB-Y', 'item_uuid' => 'u2', 'module_type_des' => 'Database', 'task_type' => 1, 'task_type_des' => 'Backup', 'task_name' => 'JOB-2'],
+]);
+$byKey = [];
+foreach ($pair as $o) {
+    $byKey[$o->sourceKey] = $o;
+}
+check('pair: backup keeps the bare item uuid (pins and stored rows stay)', isset($byKey['u1']) && $byKey['u1']->jobName === 'FILE BACKUP X' && $byKey['u1']->restorePoints === 168);
+check('pair: copy gets its own key with the job', isset($byKey['u1|WEEKLY COPY X']) && $byKey['u1|WEEKLY COPY X']->restorePoints === 249);
+check('pair: job type Backup / Copy', $byKey['u1']->jobType === 'Backup' && $byKey['u1|WEEKLY COPY X']->jobType === 'Copy');
+check('pair: a second backup job of the same item never overwrites the first', count($pair) === 4 && isset($byKey['u2'], $byKey['u2|JOB-2']));
+$vmTypes = ItemMapper::map([
+    ['item_name' => 'VM-T', 'module_type_des' => 'Virtualization', 'task_type_des' => 'Copy', 'task_name' => 'C'],
+    ['item_name' => 'VM-T', 'module_type_des' => 'Virtualization', 'task_type_des' => 'Backup', 'task_name' => 'B'],
+]);
+check('vm: job types merged, sorted', count($vmTypes) === 1 && $vmTypes[0]->jobType === 'Backup, Copy');
+check('job type label from the code when the text is missing', ItemMapper::map([['item_name' => 'Z', 'item_uuid' => 'z', 'module_type_des' => 'Database', 'task_type' => 17]])[0]->jobType === 'Copy');
+
+// Storage per row (0.5.1-rc2): GET /storages, then items/list filtered by each storage_uuid.
+$items = [
+    ['item_name' => 'DB-X', 'item_uuid' => 'u1', 'module_type_des' => 'Database', 'task_type' => 1, 'task_type_des' => 'Backup', 'task_name' => 'B1', 'last_time' => 1761600000],
+    ['item_name' => 'DB-X', 'item_uuid' => 'u1', 'module_type_des' => 'Database', 'task_type' => 17, 'task_type_des' => 'Copy', 'task_name' => 'C1', 'last_time' => 1761600000],
+    ['item_name' => 'VM-S', 'module_type_des' => 'Virtualization', 'task_type' => 1, 'task_type_des' => 'Backup', 'task_name' => 'B2', 'last_time' => 1761600000],
+    ['item_name' => 'DB-Z', 'item_uuid' => 'u9', 'module_type_des' => 'Database', 'task_type' => 17, 'task_type_des' => 'Copy', 'task_name' => 'C9', 'last_time' => 1761600000],
+];
+$t = new FakeT();
+$t->queue = [
+    okr(['total' => 4, 'rows' => $items]),
+    okr(['total' => 0, 'rows' => []]),
+    okr(['total' => 3, 'rows' => [
+        ['storage_uuid' => 's1', 'storage_nickname' => 'NFS-ONE', 'storage_type' => 6],
+        ['storage_uuid' => 's2', 'storage_nickname' => 'TAPE-ONE', 'storage_type' => 10],
+        ['storage_uuid' => 's3', 'storage_nickname' => 'ODD', 'storage_type' => 99],
+    ]]),
+    okr(['total' => 2, 'rows' => [$items[0], $items[2]]]),
+    okr(['total' => 1, 'rows' => [$items[1]]]),
+    okr(['total' => 1, 'rows' => [$items[2]]]),
+    okr(['total' => 1, 'rows' => [['group_name' => 'TAPE-GROUP', 'job_name' => 'C9']]]),
+];
+$src = new VinchinSource(new Client('h', $t, 'K'), false, fn() => []);
+$st = [];
+foreach ($src->fetch() as $o) {
+    $st[$o->sourceKey] = $o->storage;
+}
+check('storage: backup row on its NFS storage', ($st['u1'] ?? null) === 'NFS-ONE (NFS)');
+check('storage: copy row on its tape', ($st['u1|C1'] ?? null) === 'TAPE-ONE (Tape)');
+check('storage: VM on several storages lists each, sorted', ($st['VM-S'] ?? null) === 'NFS-ONE (NFS), ODD (Storage type 99)');
+check('storage: copy job found only in the tape job list gets its tape group', ($st['u9|C9'] ?? null) === 'TAPE-GROUP (Tape)');
+$storageCalls = array_values(array_filter($t->calls, static fn(array $c): bool => str_contains($c['url'], '/backup_data/items/list')));
+check('storage: items/list asked once per storage, filtered by its uuid', count($storageCalls) === 4
+    && (json_decode((string) $storageCalls[1]['body'], true)['storage_uuid'] ?? null) === ['s1']);
+check('storage: no error when all reads worked', $src->storageErrors() === []);
+
+$t = new FakeT();
+$t->queue = [okr(['total' => 1, 'rows' => [$items[0]]]), okr(['total' => 0, 'rows' => []]), bad()];
+$src = new VinchinSource(new Client('h', $t, 'K'), false, fn() => []);
+$r = $src->fetch();
+check('storage: refused storage list keeps the objects, storage empty', count($r) === 1 && $r[0]->storage === '');
+check('storage: refused storage list is reported, no key', count($src->storageErrors()) === 1 && !str_contains($src->storageErrors()[0], 'K'));
 
 done();

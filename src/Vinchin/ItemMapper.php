@@ -10,6 +10,9 @@ final class ItemMapper
     /** Vinchin renders local-time strings in the server's zone. */
     public const SERVER_TZ = 'Asia/Jakarta';
 
+    /** task_type codes seen on the VM 2026-11-12 (task_type_des " Backup" / "Copy"). */
+    private const TASK_TYPES = [1 => 'Backup', 17 => 'Copy'];
+
     /**
      * @param list<array<string,mixed>> $rows
      * @return list<BackupObject>
@@ -19,6 +22,7 @@ final class ItemMapper
         /** @var array<string, array<string,mixed>> $vms */
         $vms = [];
         $others = [];
+        $keys = [];
 
         foreach ($rows as $row) {
             if (!is_array($row)) {
@@ -36,7 +40,7 @@ final class ItemMapper
                 $time = self::parseTime($row['last_time'] ?? null);
                 $key = strtolower($name);
                 if (!isset($vms[$key])) {
-                    $vms[$key] = ['name' => $name, 'ip' => $ip, 'time' => $time, 'points' => 0, 'jobs' => [],
+                    $vms[$key] = ['name' => $name, 'ip' => $ip, 'time' => $time, 'points' => 0, 'jobs' => [], 'types' => [],
                         'size' => '', 'abnormal' => false, 'deleted' => false, 'timepoint' => ''];
                 }
                 $vm = &$vms[$key];
@@ -62,6 +66,10 @@ final class ItemMapper
                 if ($job !== '' && !in_array($job, $vm['jobs'], true)) {
                     $vm['jobs'][] = $job;
                 }
+                $type = self::jobType($row);
+                if ($type !== '' && !in_array($type, $vm['types'], true)) {
+                    $vm['types'][] = $type;
+                }
                 $vm['abnormal'] = $vm['abnormal'] || self::flag($row['abnormal_chain_flag'] ?? false);
                 $vm['deleted'] = $vm['deleted'] || self::flag($row['src_data_deleted_flag'] ?? false);
                 unset($vm);
@@ -72,13 +80,19 @@ final class ItemMapper
             if ($uuid === '') {
                 continue;
             }
+            $key = self::sourceKey($row);
+            if (isset($keys[mb_strtolower($key)])) {
+                // A second backup job of the same item: its own row, never an overwrite.
+                $key = $uuid . '|' . self::s($row['task_name'] ?? '');
+            }
+            $keys[mb_strtolower($key)] = true;
             [$base, $ip] = self::splitName($raw);
             if ($ip === '') {
                 $ip = self::ip($row['ip'] ?? '');
             }
             $where = self::s($row['instance_name'] ?? '');
             $others[] = new BackupObject(
-                $uuid,
+                $key,
                 $where !== '' ? $base . ' @ ' . $where : $base,
                 $ip,
                 self::kind($row),
@@ -89,17 +103,47 @@ final class ItemMapper
                 self::flag($row['abnormal_chain_flag'] ?? false),
                 self::flag($row['src_data_deleted_flag'] ?? false),
                 null,
-                self::s($row['timepoint_uuid'] ?? '') ?: null
+                self::s($row['timepoint_uuid'] ?? '') ?: null,
+                self::jobType($row)
             );
         }
 
         $out = [];
         foreach ($vms as $vm) {
             sort($vm['jobs'], SORT_STRING); // stable text whatever order Vinchin returns rows in
+            sort($vm['types'], SORT_STRING);
             $out[] = new BackupObject($vm['name'], $vm['name'], $vm['ip'], 'vm', implode(', ', $vm['jobs']),
-                $vm['time'], $vm['points'], $vm['size'], $vm['abnormal'], $vm['deleted'], null, $vm['timepoint'] ?: null);
+                $vm['time'], $vm['points'], $vm['size'], $vm['abnormal'], $vm['deleted'], null, $vm['timepoint'] ?: null,
+                implode(', ', $vm['types']));
         }
         return array_merge($out, $others);
+    }
+
+    /**
+     * Row key of an item row. A database/file item and its tape copy share item_uuid (VM
+     * 2026-11-12): the backup keeps the bare uuid (stored rows and pins stay), any other job
+     * type is "uuid|job". VM rows are merged by name instead (see map()).
+     */
+    public static function sourceKey(array $row): string
+    {
+        if (self::isVm($row)) {
+            [$name] = self::splitName(self::s($row['item_name'] ?? '') !== '' ? self::s($row['item_name']) : self::s($row['title'] ?? ''));
+            return $name;
+        }
+        $uuid = self::s($row['item_uuid'] ?? '');
+        $type = self::jobType($row);
+        return $type === '' || $type === 'Backup' ? $uuid : $uuid . '|' . self::s($row['task_name'] ?? '');
+    }
+
+    /** "Backup", "Copy", the source's own text for other kinds, or '' when the row has none. */
+    public static function jobType(array $row): string
+    {
+        $text = self::s($row['task_type_des'] ?? '');
+        if ($text !== '') {
+            return $text;
+        }
+        $code = $row['task_type'] ?? null;
+        return is_numeric($code) ? (self::TASK_TYPES[(int) $code] ?? '') : '';
     }
 
     /**

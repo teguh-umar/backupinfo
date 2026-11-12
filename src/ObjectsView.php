@@ -10,15 +10,15 @@ namespace GlpiPlugin\Backupinfo;
  */
 final class ObjectsView
 {
-    public const COLUMNS = ['Name', 'IP', 'Kind', 'Job', 'Last backup', 'Age', 'Restore points', 'Size', 'Last run', 'Result',
-        'Restore test', 'Source', 'Match', 'Computer', 'Action'];
+    public const COLUMNS = ['Name', 'IP', 'Kind', 'Job', 'Type', 'Storage', 'Last backup', 'Age', 'Restore points', 'Size',
+        'Last run', 'Result', 'Restore test', 'Source', 'Match', 'Computer', 'Action'];
 
     /** Column indexes the page shows as HTML. */
     public const COL_NAME     = 0;
-    public const COL_RESULT   = 9;
-    public const COL_RESTORE  = 10;
-    public const COL_COMPUTER = 13;
-    public const COL_ACTION   = 14;
+    public const COL_RESULT   = 11;
+    public const COL_RESTORE  = 12;
+    public const COL_COMPUTER = 15;
+    public const COL_ACTION   = 16;
 
     /** Restore tests search option "Computer" (RestoreTest::rawSearchOptions). */
     private const SO_COMPUTER = 3;
@@ -107,6 +107,8 @@ final class ObjectsView
                 (string) ($o['ip'] ?? ''),
                 (string) ($o['kind'] ?? ''),
                 (string) ($o['job_name'] ?? ''),
+                (string) ($o['job_type'] ?? ''),
+                (string) ($o['storage'] ?? ''),
                 (string) ($o['last_backup'] ?? ''),
                 Summary::AGE_BUCKETS[Summary::ageBucket(isset($o['last_backup']) ? (string) $o['last_backup'] : null, $nowS)],
                 (string) (int) ($o['restore_points'] ?? 0),

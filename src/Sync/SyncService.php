@@ -82,6 +82,8 @@ class SyncService
                 'data_size'      => self::cap($o->dataSize, 64),
                 'schedule_hours' => $o->scheduleHours,
                 'timepoint_uuid' => $o->timepointUuid === null ? null : self::cap($o->timepointUuid, 64),
+                'job_type'       => self::cap($o->jobType, 50),
+                'storage'        => self::cap($o->storage, 255),
                 'abnormal_chain' => $o->abnormalChain ? 1 : 0,
                 'source_deleted' => $o->sourceDeleted ? 1 : 0,
                 'itemtype'       => (string) $match['itemtype'],

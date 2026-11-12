@@ -77,6 +77,8 @@ function plugin_backupinfo_install()
             `data_size` varchar(64) NOT NULL DEFAULT '',
             `schedule_hours` int unsigned DEFAULT NULL,
             `timepoint_uuid` varchar(64) DEFAULT NULL,
+            `job_type` varchar(50) NOT NULL DEFAULT '',
+            `storage` varchar(255) NOT NULL DEFAULT '',
             `abnormal_chain` tinyint NOT NULL DEFAULT 0,
             `source_deleted` tinyint NOT NULL DEFAULT 0,
             `itemtype` varchar(100) DEFAULT NULL,
@@ -95,6 +97,13 @@ function plugin_backupinfo_install()
         if (!$DB->fieldExists('glpi_plugin_backupinfo_objects', 'timepoint_uuid')) {
             // 0.3.0: latest restore point, to read its Vinchin verification history
             $DB->doQuery("ALTER TABLE `glpi_plugin_backupinfo_objects` ADD COLUMN `timepoint_uuid` varchar(64) DEFAULT NULL AFTER `schedule_hours`");
+        }
+        if (!$DB->fieldExists('glpi_plugin_backupinfo_objects', 'job_type')) {
+            // 0.5.1: Backup / Copy, and where the backup is written (VM 2026-11-12)
+            $DB->doQuery("ALTER TABLE `glpi_plugin_backupinfo_objects` ADD COLUMN `job_type` varchar(50) NOT NULL DEFAULT '' AFTER `timepoint_uuid`");
+        }
+        if (!$DB->fieldExists('glpi_plugin_backupinfo_objects', 'storage')) {
+            $DB->doQuery("ALTER TABLE `glpi_plugin_backupinfo_objects` ADD COLUMN `storage` varchar(255) NOT NULL DEFAULT '' AFTER `job_type`");
         }
     }
 
