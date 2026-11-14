@@ -1,5 +1,36 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.5.2-rc1 — 2026-11-15 (release candidate)
+
+The cards and job names on Backup objects are clickable (user, 2026-11-14). A click opens the
+table under the cards, narrowed to what was clicked. Each link starts a fresh view of the chosen
+source: state All, other filters off.
+
+- **KPI cards:**
+
+  | Card | What the table shows |
+  |---|---|
+  | Protected objects | every object |
+  | Fresh backups | ≤ 24 hours only |
+  | Total data | sorted by Size, largest first |
+  | Restore points | sorted by Restore points, most first |
+  | Needs attention | the Needs attention rows |
+
+- **By kind:** a kind (Database, VM, File) shows only that kind.
+- **Needs attention** and **Largest objects:** an item shows only that object's row. Several rows
+  can share a name, so the link uses the object's id, not its name.
+- **Job column:** each job name is a link, and a cell with several jobs gives one link per job.
+  It shows every row of that job. The match is case-insensitive, and a job never matches a
+  longer name.
+- A button next to "Needs attention" names the active narrowing, e.g. "Job: X". Clicking it
+  clears the narrowing. The Excel export lists the narrowing in its Filters line.
+- **Fix: Size sorts by real size.** Before, the column sorted as text, so "883 GB" came above
+  "1.2 TB". Fixed on screen and in the export.
+- **Fix: failure reason on hover over Result is back.** Since 0.5.1-rc2, including the 0.5.1 final, the page still looked runs up by the
+  old key (connection and name), so the hover text was always empty. It now uses the row's own
+  run.
+- Upgrade: no database change.
+
 ## 0.5.1 — 2026-11-12
 
 Final release: the tree of 0.5.1-rc2, confirmed by the user on the VM (2026-11-12). Checked on the

@@ -13,6 +13,7 @@ use GlpiPlugin\Backupinfo\Cron;
 use GlpiPlugin\Backupinfo\ObjectsView;
 use GlpiPlugin\Backupinfo\RestoreTest;
 use GlpiPlugin\Backupinfo\Rpo;
+use GlpiPlugin\Backupinfo\Status;
 use GlpiPlugin\Backupinfo\Summary;
 use GlpiPlugin\Backupinfo\SummaryExport;
 use GlpiPlugin\Backupinfo\Csv;
@@ -118,8 +119,15 @@ if (!isset($activeSources[$source])) {
 }
 $ages = array_values(array_intersect(array_keys(Summary::AGE_BUCKETS), is_array($_GET['age'] ?? null) ? array_map('strval', $_GET['age']) : []));
 $attentionOn = ($_GET['attention'] ?? '') === '1';
+// A clicked card or job name (0.5.2-rc1): one kind, one job or one object.
+$kind  = is_string($_GET['kind'] ?? null) ? mb_substr(trim($_GET['kind']), 0, 50) : '';
+$job   = is_string($_GET['job'] ?? null) ? mb_substr(trim($_GET['job']), 0, 255) : '';
+$objId = is_string($_GET['obj'] ?? null) && ctype_digit($_GET['obj']) ? (int) $_GET['obj'] : 0;
 // Kept on every link and table reload of this page.
-$keep = array_filter(['source' => $source ?: null, 'age' => $ages ?: null, 'attention' => $attentionOn ? '1' : null], static fn($v): bool => $v !== null);
+$keep = array_filter([
+    'source' => $source ?: null, 'age' => $ages ?: null, 'attention' => $attentionOn ? '1' : null,
+    'kind' => $kind ?: null, 'job' => $job ?: null, 'obj' => $objId ?: null,
+], static fn($v): bool => $v !== null);
 $link = static fn(array $over = []): string => $page . '?' . http_build_query(array_filter(array_merge(['state' => $state], $keep, $over), static fn($v): bool => $v !== null));
 
 // Visibility: the Computer's entity, or (no Computer) config READ.
@@ -192,7 +200,7 @@ $model   = Summary::build($objects, $last, Rpo::fromConfig(), $now, $gaps);
 $chosen  = $source > 0 ? [$source => $lastSyncs[$source]] : $lastSyncs;
 $synced  = array_filter($chosen, static fn(string $d): bool => $d !== '');
 $oldest  = count($synced) === count($chosen) && $synced !== [] ? min($synced) : null;
-$objects = ObjectsView::select($objects, $states[$state][1], $ages, $attentionOn, $model['attentionIds'], $now);
+$objects = ObjectsView::select($objects, $states[$state][1], $ages, $attentionOn, $model['attentionIds'], $now, ['kind' => $kind, 'job' => $job, 'id' => $objId]);
 $tests = RestoreTest::latest(array_map(static fn(array $o): int => (int) $o['items_id'], $objects));
 $canTest = Session::haveRight(RightDefinition::RESTORETEST, CREATE);
 $canSeeTests = Session::haveRight(RightDefinition::RESTORETEST, READ);
@@ -205,15 +213,28 @@ $labels = [
 ];
 $meta = []; // object id => what the HTML cells need
 foreach ($objects as $o) {
-    $run = $last[(int) $o['connections_id'] . '|' . mb_strtolower(trim((string) $o['name']))] ?? null;
+    $run = $last[(int) $o['id']] ?? null;
     $meta[(int) $o['id']] = ['cid' => (int) $o['items_id'], 'match' => (string) $o['match_state'], 'reason' => $run === null ? '' : (string) ($run['reason'] ?? '')];
+}
+// What a clicked card or job name narrows to, for the Clear button and the export's filter line.
+$narrowLabel = '';
+if ($objId > 0) {
+    $narrowLabel = sprintf(__('Object: %s', 'backupinfo'), $objects[0]['name'] ?? ('#' . $objId));
+} elseif ($job !== '') {
+    $narrowLabel = sprintf(__('Job: %s', 'backupinfo'), $job);
+}
+if ($kind !== '') {
+    $narrowLabel = trim($narrowLabel . ' ' . sprintf(__('Kind: %s', 'backupinfo'), __(Status::kindLabel($kind), 'backupinfo')));
 }
 // Excel export of the summary (sheet Summary: cards) and the filtered table (sheet Objects).
 if (($_GET['export'] ?? '') === 'xlsx') {
     // The same filter row and sort as the table on screen (the link carries them).
-    $shown     = AuditTable::filtered(['columns' => ObjectsView::COLUMNS, 'rows' => ObjectsView::rows($objects, $last, $tests, Registry::types(), $labels, $now)], $_GET, [ObjectsView::COL_ACTION]);
+    $shown     = AuditTable::filtered(['columns' => ObjectsView::COLUMNS, 'rows' => ObjectsView::rows($objects, $last, $tests, Registry::types(), $labels, $now)], $_GET, [ObjectsView::COL_ACTION], ObjectsView::sortKeys());
     $tableRows = $shown['rows'];
     $filters   = [$states[$state][0]];
+    if ($narrowLabel !== '') {
+        $filters[] = $narrowLabel;
+    }
     foreach ($shown['filters'] as $key => $value) {
         if ($key !== 'active') {
             $filters[] = $shown['labels'][$key] . ': ' . implode(' | ', (array) $value);
@@ -263,10 +284,17 @@ if (!$canPin) {
 $view = AuditTable::view('backupinfo-objects', ['columns' => $columns, 'rows' => ObjectsView::rows($objects, $last, $tests, Registry::types(), $labels, $now)], $_GET,
     (int) ($_SESSION['glpilist_limit'] ?? 15), [
         'fixed' => [ObjectsView::COL_ACTION],
-        'html'  => static function (array $row) use ($meta, $canPin, $page, $canTest, $canSeeTests): array {
+        'sortKeys' => ObjectsView::sortKeys(),
+        'html' => static function (array $row) use ($meta, $canPin, $page, $canTest, $canSeeTests, $link): array {
             $id  = (int) $row[ObjectsView::COL_ACTION];
             $m   = $meta[$id] ?? ['cid' => 0, 'match' => '', 'reason' => ''];
             $out = [];
+            // A job name narrows the table to that job: every row of it, other filters off.
+            if ((string) $row[ObjectsView::COL_JOB] !== '') {
+                $out[ObjectsView::COL_JOB] = ObjectsView::jobLinks((string) $row[ObjectsView::COL_JOB], static fn(string $j): string => $link([
+                    'state' => 'all', 'job' => $j, 'kind' => null, 'obj' => null, 'age' => null, 'attention' => null,
+                ]) . '#backupinfo-objects');
+            }
             $res = (string) $row[ObjectsView::COL_RESULT];
             if ($res !== '') {
                 $out[ObjectsView::COL_RESULT] = '<span class="badge ' . ObjectsView::badge($res) . '"'
@@ -325,6 +353,10 @@ echo '<a class="btn btn-outline-danger' . ($attentionOn ? ' active' : '') . '" h
 if ($ages !== []) {
     echo '<a class="btn btn-ghost-secondary" href="' . htmlescape($link(['age' => null])) . '">' . __s('Clear age filter', 'backupinfo') . '</a>';
 }
+if ($narrowLabel !== '') {
+    echo '<a class="btn btn-ghost-secondary" href="' . htmlescape($link(['kind' => null, 'job' => null, 'obj' => null])) . '"><i class="ti ti-x me-1"></i>'
+        . htmlescape($narrowLabel) . '</a>';
+}
 echo '<div class="ms-auto d-flex gap-2">';
 echo '<a class="btn btn-outline-secondary" href="' . htmlescape($link(['export' => 'xlsx', 'filters' => $_GET['filters'] ?? null, 'sort' => $_GET['sort'] ?? null, 'order' => $_GET['order'] ?? null])) . '"><i class="ti ti-file-spreadsheet me-1"></i>' . __s('Export (Excel)', 'backupinfo') . '</a>';
 echo TableUi::columnsButton('backupinfo-objects-cols');
@@ -333,7 +365,7 @@ echo '</div>';
 if (!$canConfig) {
     echo '<div class="text-muted mb-2">' . __s('Objects without a computer are shown only to Backup Info administrators.', 'backupinfo') . '</div>';
 }
-echo '<div class="text-muted mb-2">' . __s('Last run and Result: the newest backup run stored by the sync for this object (same connection and VM name), with the reason of a failure on hover. Restore test: the newest restore test of its Computer.', 'backupinfo') . '</div>';
+echo '<div class="text-muted mb-2">' . __s('Last run and Result: the newest backup run stored by the sync for this object (same connection, name and job), with the reason of a failure on hover. Restore test: the newest restore test of its Computer.', 'backupinfo') . '</div>';
 
 echo '<div id="backupinfo-objects">';
 echo TemplateRenderer::getInstance()->render('components/datatable.html.twig', $view);

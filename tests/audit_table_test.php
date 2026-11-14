@@ -35,6 +35,15 @@ $s = AuditTable::sort([['b10'], ['b9'], ['B1'], ['b9']], 0, false);
 check('sort: natural, case-insensitive', array_column($s, 0) === ['B1', 'b9', 'b9', 'b10']);
 check('sort: descending', array_column(AuditTable::sort([['1'], ['3'], ['2']], 0, true), 0) === ['3', '2', '1']);
 
+// 0.5.2-rc1: a column can sort by a key, e.g. Size by bytes ("1.2 TB" above "883 GB"), not as text.
+$sz  = [['883 GB'], [''], ['1.2 TB'], ['47.91GB']];
+$key = static fn(string $v): int => ['1.2 TB' => 3, '883 GB' => 2, '47.91GB' => 1, '' => 0][$v];
+check('sort: by a key', array_column(AuditTable::sort($sz, 0, true, $key), 0) === ['1.2 TB', '883 GB', '47.91GB', '']);
+$vk = AuditTable::view('dt-k', ['columns' => ['Size'], 'rows' => $sz], ['sort' => 'c0', 'order' => 'DESC'], 15, ['sortKeys' => [0 => $key]]);
+check('view: sortKeys option', array_column($vk['entries'], 'c0') === ['1.2 TB', '883 GB', '47.91GB', ''], json_encode($vk['entries']));
+$fk = AuditTable::filtered(['columns' => ['Size'], 'rows' => $sz], ['sort' => 'c0', 'order' => 'ASC'], [], [0 => $key]);
+check('filtered: sortKeys too (export = screen)', array_column($fk['rows'], 0) === ['', '47.91GB', '883 GB', '1.2 TB']);
+
 // The screen filter finds rows beyond the first page: filtering runs on every row.
 $v = AuditTable::view('dt-x', $section, ['filters' => ['c3' => ['failed']], 'sort' => 'c4', 'order' => 'desc'], 2);
 check('view: counts total and filtered', $v['total_number'] === 40 && $v['filtered_number'] === 4);

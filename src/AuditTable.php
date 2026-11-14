@@ -119,19 +119,23 @@ final class AuditTable
     }
 
     /**
-     * Natural, case-insensitive sort on one column; ties keep their order.
+     * Natural, case-insensitive sort on one column; ties keep their order. With $key, the cells are
+     * compared by key($cell) instead (e.g. a size by its bytes, 0.5.2-rc1).
      *
      * @param list<list<scalar|null>> $rows
+     * @param (callable(string): (int|float|string))|null $key
      * @return list<list<scalar|null>>
      */
-    public static function sort(array $rows, int $column, bool $desc): array
+    public static function sort(array $rows, int $column, bool $desc, ?callable $key = null): array
     {
         $indexed = [];
         foreach (array_values($rows) as $n => $row) {
             $indexed[] = [$n, $row];
         }
-        usort($indexed, static function (array $a, array $b) use ($column, $desc): int {
-            $c = strnatcasecmp((string) ($a[1][$column] ?? ''), (string) ($b[1][$column] ?? ''));
+        usort($indexed, static function (array $a, array $b) use ($column, $desc, $key): int {
+            $x = (string) ($a[1][$column] ?? '');
+            $y = (string) ($b[1][$column] ?? '');
+            $c = $key !== null ? $key($x) <=> $key($y) : strnatcasecmp($x, $y);
             return $c !== 0 ? ($desc ? -$c : $c) : $a[0] <=> $b[0];
         });
         return array_map(static fn(array $p): array => $p[1], $indexed);
@@ -145,7 +149,8 @@ final class AuditTable
      * Filters and sort always read the plain cell values. $options may add:
      * - html: callable(list<scalar|null> $row): array<int, string>, already escaped HTML shown instead of
      *   the plain value for those column indexes (links, badges, forms);
-     * - fixed: list<int> column indexes with no filter and no sort (e.g. an action column).
+     * - fixed: list<int> column indexes with no filter and no sort (e.g. an action column);
+     * - sortKeys: array<int, callable(string)> column index => sort key (see sort()).
      *
      * @param array{columns: list<string>, rows: list<list<scalar|null>>} $section
      * @param array<string, mixed> $get
@@ -159,9 +164,10 @@ final class AuditTable
      * @param array{columns: list<string>, rows: list<list<scalar|null>>} $section
      * @param array<string, mixed> $get
      * @param list<int> $fixedCols columns with no filter and no sort
+     * @param array<int, callable(string): (int|float|string)> $sortKeys column index => sort key
      * @return array{rows: list<list<scalar|null>>, filters: array<string, string|list<string>>, labels: array<string, string>, choices: array<string, array<string, string>>, sort: ?string, order: string}
      */
-    public static function filtered(array $section, array $get, array $fixedCols = []): array
+    public static function filtered(array $section, array $get, array $fixedCols = [], array $sortKeys = []): array
     {
         $fixed     = array_flip($fixedCols);
         $fixedKeys = array_flip(array_map(static fn(int $i): string => 'c' . $i, $fixedCols));
@@ -173,7 +179,8 @@ final class AuditTable
         $sort  = is_string($get['sort'] ?? null) && isset($keys[$get['sort']]) && !isset($fixed[(int) substr($get['sort'], 1)]) ? $get['sort'] : null;
         $order = strtoupper((string) ($get['order'] ?? '')) === 'DESC' ? 'DESC' : 'ASC';
         if ($sort !== null) {
-            $rows = self::sort($rows, (int) substr($sort, 1), $order === 'DESC');
+            $col  = (int) substr($sort, 1);
+            $rows = self::sort($rows, $col, $order === 'DESC', $sortKeys[$col] ?? null);
         }
         return ['rows' => $rows, 'filters' => $filters, 'labels' => $keys, 'choices' => $choices, 'sort' => $sort, 'order' => $order];
     }
@@ -182,7 +189,7 @@ final class AuditTable
     {
         $fixed = array_flip($options['fixed'] ?? []);
         $html  = $options['html'] ?? null;
-        $f       = self::filtered($section, $get, $options['fixed'] ?? []);
+        $f       = self::filtered($section, $get, $options['fixed'] ?? [], $options['sortKeys'] ?? []);
         $keys    = $f['labels'];
         $choices = $f['choices'];
         $filters = $f['filters'];

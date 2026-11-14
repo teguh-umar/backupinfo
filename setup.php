@@ -7,7 +7,7 @@
  * @license GPL-3.0-or-later
  */
 
-define('PLUGIN_BACKUPINFO_VERSION', '0.5.1');
+define('PLUGIN_BACKUPINFO_VERSION', '0.5.2-rc1');
 define('PLUGIN_BACKUPINFO_MIN_GLPI', '11.0.0');
 define('PLUGIN_BACKUPINFO_MAX_GLPI', '11.99.99');
 

@@ -69,6 +69,24 @@ check('select: two ages', array_column(ObjectsView::select($all, null, ['day', '
 check('select: attention only', array_column(ObjectsView::select($all, null, [], true, [2 => true], $t), 'id') === [2]);
 check('select: nothing set keeps every row', ObjectsView::select($all, null, [], false, [], $t) === $all);
 
+// 0.5.2-rc1: clickable cards and job names narrow the table by kind, job or one object.
+$narrow = [
+    ['id' => 1, 'match_state' => 'matched', 'last_backup' => null, 'kind' => 'vm', 'job_name' => 'DAILY-A, COPY DAILY-A'],
+    ['id' => 2, 'match_state' => 'matched', 'last_backup' => null, 'kind' => 'database', 'job_name' => 'DAILY-A'],
+    ['id' => 3, 'match_state' => 'matched', 'last_backup' => null, 'kind' => 'database', 'job_name' => 'DAILY-AB'],
+];
+check('select: kind', array_column(ObjectsView::select($narrow, null, [], false, [], $t, ['kind' => 'database']), 'id') === [2, 3]);
+check('select: kind other = no kind, as on the By kind card', array_column(ObjectsView::select([['id' => 9, 'kind' => ''], ...$narrow], null, [], false, [], $t, ['kind' => 'other']), 'id') === [9]);
+check('select: job = one of the row jobs, any case, never a longer name', array_column(ObjectsView::select($narrow, null, [], false, [], $t, ['job' => 'daily-a']), 'id') === [1, 2]);
+check('select: one object', array_column(ObjectsView::select($narrow, null, [], false, [], $t, ['id' => 3]), 'id') === [3]);
+check('select: empty narrow keeps every row', ObjectsView::select($narrow, null, [], false, [], $t, ['kind' => '', 'job' => '', 'id' => 0]) === $narrow);
+check('jobs: split, trimmed, no empties', ObjectsView::jobs(' A , b,,') === ['A', 'b']);
+$jl = ObjectsView::jobLinks('JOB <1>, COPY', static fn(string $j): string => '/p?job=' . rawurlencode($j));
+check('job links: one escaped link per job', $jl === '<a href="/p?job=JOB%20%3C1%3E">JOB &lt;1&gt;</a>, <a href="/p?job=COPY">COPY</a>', $jl);
+$sk = ObjectsView::sortKeys();
+check('sort keys: Size by bytes', ObjectsView::COLUMNS[ObjectsView::COL_SIZE] === 'Size' && isset($sk[ObjectsView::COL_SIZE]) && $sk[ObjectsView::COL_SIZE]('1.2 TB') > $sk[ObjectsView::COL_SIZE]('883 GB'));
+check('columns: kind, job, restore points indexes', ObjectsView::COLUMNS[ObjectsView::COL_KIND] === 'Kind' && ObjectsView::COLUMNS[ObjectsView::COL_JOB] === 'Job' && ObjectsView::COLUMNS[ObjectsView::COL_POINTS] === 'Restore points');
+
 $obj = $read('front/objects.php');
 check('page: GLPI table with the objects rows', str_contains($obj, "render('components/datatable.html.twig', \$view)") && str_contains($obj, 'ObjectsView::rows('));
 check('page: runs read from the stored runs, no source call', str_contains($obj, 'glpi_plugin_backupinfo_runs_items AS i') && !str_contains($obj, 'Registry::create('));
@@ -88,6 +106,14 @@ check('page: Needs attention toggle', str_contains($obj, "__s('Needs attention',
 check('page: export link', str_contains($obj, "'export' => 'xlsx'"));
 check('page: source only for an active connection', str_contains($obj, 'isset($activeSources[$source])'));
 check('page: reloads keep source, age and attention', str_contains($obj, '$keep') && str_contains($obj, "'source'") && str_contains($obj, "'age'"));
+// 0.5.2-rc1 wiring: hover reason by object id (the run lookup was left on the old key in rc2),
+// job links, narrow params kept on reloads, Size sorted by bytes on screen and in the export.
+check('page: failure reason from the row own run (by object id)', str_contains($obj, '$run = $last[(int) $o[\'id\']] ?? null;') && !str_contains($obj, "\$last[(int) \$o['connections_id'] . '|'"));
+check('page: job names are links that narrow the table', str_contains($obj, 'ObjectsView::jobLinks(') && str_contains($obj, "'job' => \$j"));
+check('page: kind, job and object narrow kept on reloads', str_contains($obj, "'kind' => \$kind ?: null") && str_contains($obj, "'job' => \$job ?: null") && str_contains($obj, "'obj' => \$objId ?: null"));
+check('page: narrow passed to select', str_contains($obj, "['kind' => \$kind, 'job' => \$job, 'id' => \$objId]"));
+check('page: clear the narrow', str_contains($obj, "\$link(['kind' => null, 'job' => null, 'obj' => null])"));
+check('page: Size sorted by bytes on screen and in the export', substr_count($obj, 'ObjectsView::sortKeys()') === 2);
 $menu = $read('src/Menu.php');
 check('menu: Backup summary entry before Backup objects', str_contains($menu, "\$options['summary']") && str_contains($menu, "__('Backup summary', 'backupinfo')")
     && str_contains($menu, '#backupinfo-summary') && strpos($menu, "\$options['summary']") < strpos($menu, "\$options['objects']"));

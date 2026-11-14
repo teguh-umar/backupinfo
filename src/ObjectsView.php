@@ -15,6 +15,10 @@ final class ObjectsView
 
     /** Column indexes the page shows as HTML. */
     public const COL_NAME     = 0;
+    public const COL_KIND     = 2;
+    public const COL_JOB      = 3;
+    public const COL_POINTS   = 8;
+    public const COL_SIZE     = 9;
     public const COL_RESULT   = 11;
     public const COL_RESTORE  = 12;
     public const COL_COMPUTER = 15;
@@ -133,11 +137,26 @@ final class ObjectsView
      * @param list<string>|null $states match_state values (null = all)
      * @param list<string> $ages Summary::AGE_BUCKETS keys ([] = all)
      * @param array<int, true> $attentionIds Summary::build()['attentionIds']
+     * @param array{kind?: string, job?: string, id?: int} $narrow a clicked card or job name (0.5.2-rc1):
+     *        the object kind, one job of the row's job list (any case), or one object id
      * @return list<array<string, mixed>>
      */
-    public static function select(array $objects, ?array $states, array $ages, bool $attentionOnly, array $attentionIds, int $nowS): array
+    public static function select(array $objects, ?array $states, array $ages, bool $attentionOnly, array $attentionIds, int $nowS, array $narrow = []): array
     {
-        return array_values(array_filter($objects, static function (array $o) use ($states, $ages, $attentionOnly, $attentionIds, $nowS): bool {
+        $kind = (string) ($narrow['kind'] ?? '');
+        $job  = mb_strtolower(trim((string) ($narrow['job'] ?? '')));
+        $id   = (int) ($narrow['id'] ?? 0);
+        return array_values(array_filter($objects, static function (array $o) use ($states, $ages, $attentionOnly, $attentionIds, $nowS, $kind, $job, $id): bool {
+            if ($id > 0 && (int) $o['id'] !== $id) {
+                return false;
+            }
+            // Same kind key as the By kind card: no kind counts as 'other'.
+            if ($kind !== '' && (trim((string) ($o['kind'] ?? '')) ?: 'other') !== $kind) {
+                return false;
+            }
+            if ($job !== '' && !in_array($job, array_map('mb_strtolower', self::jobs((string) ($o['job_name'] ?? ''))), true)) {
+                return false;
+            }
             if ($states !== null && !in_array((string) ($o['match_state'] ?? ''), $states, true)) {
                 return false;
             }
@@ -146,6 +165,31 @@ final class ObjectsView
             }
             return !$attentionOnly || isset($attentionIds[(int) $o['id']]);
         }));
+    }
+
+    /** @return list<string> the jobs of a comma-separated job_name cell, trimmed */
+    public static function jobs(string $cell): array
+    {
+        return array_values(array_filter(array_map('trim', explode(',', $cell)), static fn(string $j): bool => $j !== ''));
+    }
+
+    /**
+     * The Job cell as one escaped link per job (0.5.2-rc1): a click narrows the table to that job.
+     *
+     * @param callable(string): string $url job => page URL (not escaped)
+     */
+    public static function jobLinks(string $cell, callable $url): string
+    {
+        return implode(', ', array_map(
+            static fn(string $j): string => '<a href="' . htmlescape($url($j)) . '">' . htmlescape($j) . '</a>',
+            self::jobs($cell)
+        ));
+    }
+
+    /** @return array<int, callable(string): int> sort keys of the table: Size by its bytes, not as text */
+    public static function sortKeys(): array
+    {
+        return [self::COL_SIZE => static fn(string $v): int => Summary::bytes($v)];
     }
 
     /** Badge colour of a run or test result: green success/pass, red failed/fail, yellow anything else. */

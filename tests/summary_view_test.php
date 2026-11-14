@@ -70,6 +70,26 @@ check('segment title attribute well formed', !str_contains($h4, 'title=""'));
 check('legend items are links too', substr_count($h4, 'class="text-reset') >= 5);
 check('page passes the attention toggle to the cards', str_contains((string) file_get_contents(BI_ROOT . '/front/objects.php'), '$ages, $oldest, $attentionOn)'));
 
+// 0.5.2-rc1: every card opens the table narrowed to what it counts (user, 2026-11-14).
+$h5 = SummaryView::render(Summary::build($rows3, [], new Rpo(26, 24), $now, []), [1 => 'vinchin-test'], 1, '/p', ['older'], null, true);
+preg_match_all('/<a class="card[^"]*" href="([^"]+)"/', $h5, $cm);
+$cards = [];
+foreach ($cm[1] as $href) {
+    $href = html_entity_decode($href);
+    parse_str((string) parse_url($href, PHP_URL_QUERY), $q);
+    $cards[] = ['q' => $q, 'frag' => (string) parse_url($href, PHP_URL_FRAGMENT)];
+}
+check('cards: the five KPI cards are links', count($cards) === 5, json_encode($cards));
+$q = array_column($cards, 'q');
+check('card Protected objects: every object of the source, other filters cleared', $q[0] === ['state' => 'all', 'source' => '1']);
+check('card Fresh backups: age ≤ 24 hours only', $q[1] === ['state' => 'all', 'source' => '1', 'age' => ['day']]);
+check('card Total data: largest size first', $q[2] === ['state' => 'all', 'source' => '1', 'sort' => 'c9', 'order' => 'DESC']);
+check('card Restore points: most points first', $q[3] === ['state' => 'all', 'source' => '1', 'sort' => 'c8', 'order' => 'DESC']);
+check('card Needs attention: attention only', $q[4] === ['state' => 'all', 'source' => '1', 'attention' => '1']);
+check('cards jump to the table', array_unique(array_column($cards, 'frag')) === ['backupinfo-objects']);
+check('by kind rows link their kind', str_contains($h5, 'kind=vm#backupinfo-objects'));
+check('attention and largest items link their object', substr_count($h5, 'obj=2#backupinfo-objects') === 2 && str_contains($h5, 'obj=1#backupinfo-objects'));
+
 $veeamOnly = Summary::build([$row(['id' => 7, 'name' => 'vm-v-01', 'connections_id' => 2, 'connection_name' => 'veeam-test', 'data_size' => '', 'last_backup' => $at(60)])],
     [], new Rpo(26, 24), $now, [2 => ['size' => 'x']]);
 $hv = SummaryView::render($veeamOnly, [2 => 'veeam-test'], 2, '/p', [], null);
