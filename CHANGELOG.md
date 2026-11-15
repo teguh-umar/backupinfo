@@ -1,5 +1,12 @@
 # Changelog — Backup Info (backupinfo)
 
+## 0.5.2 — 2026-11-15
+
+Final release: the tree of 0.5.2-rc1, which the user tested on the VM (2026-11-15). The test
+covered the clickable cards and job names, Size sorting by real size, the failure reason shown
+on hover, and the export of a filtered view. The 0.5.2-rc1 entry below is its content. There is
+no database change. The user manual is still the 0.5.1 one, which covers this patch release.
+
 ## 0.5.2-rc1 — 2026-11-15 (release candidate)
 
 The cards and job names on Backup objects are clickable (user, 2026-11-14). A click opens the
